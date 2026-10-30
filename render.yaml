@@ -1,0 +1,16 @@
+# Деплой на Render.com: Dashboard → New → Blueprint → выбрать этот репозиторий
+services:
+  - type: web
+    name: voice-assistant
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_TZ
+        value: Europe/Moscow
+      # Модель семантического поиска не помещается в 512 МБ бесплатного тарифа.
+      # На тарифе Starter (2 ГБ) и выше можно поставить 1.
+      - key: SEMANTIC_SEARCH
+        value: "0"
+      - key: ANTHROPIC_API_KEY
+        sync: false
