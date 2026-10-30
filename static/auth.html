@@ -7,11 +7,15 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&family=Caveat:wght@700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=23">
+  <link rel="stylesheet" href="/static/style.css?v=29">
 </head>
 <body>
   <main class="auth">
     <span class="lang" title="Интерфейс на русском">RU</span>
+    <img class="adeco d-squiggle" src="/static/img/deco-squiggle.webp" alt="" width="192" height="150">
+    <img class="adeco d-mini" src="/static/img/deco-mini.webp" alt="" width="92" height="42">
+    <img class="adeco d-slogan" src="/static/img/deco-slogan.webp" alt="" width="225" height="143">
+    <img class="adeco d-squiggle2" src="/static/img/deco-squiggle2.webp" alt="" width="185" height="140">
 
     <section class="auth-left">
       <a class="brand" href="/login">
@@ -31,14 +35,15 @@
           <li><span class="ico"><svg class="icon"><use href="/static/icons.svg#sparkle"/></svg></span>Все инструменты<br>в одном месте</li>
         </ul>
       </div>
-      <img class="auth-art blend" data-mode="login" src="/static/img/auth-login.webp" alt="" width="456" height="608">
-      <img class="auth-art blend" data-mode="register" src="/static/img/auth-register.webp" alt="" width="406" height="550" hidden>
+      <img class="auth-art" data-mode="login" src="/static/img/auth-login.webp" alt="" width="505" height="622">
+      <img class="auth-art" data-mode="register" src="/static/img/auth-register.webp" alt="" width="406" height="550" hidden>
     </section>
 
     <section class="card form-card">
+      <img class="adeco d-star" src="/static/img/deco-star.webp" alt="" width="218" height="68">
       <!-- вход -->
       <form id="loginForm" data-mode="login" novalidate>
-        <h2>Добро пожаловать!</h2>
+        <h2>Добро пожаловать!<img class="d-ticks" src="/static/img/deco-ticks.webp" alt="" width="66" height="82"></h2>
         <p class="hint">Войдите в свой аккаунт, чтобы продолжить работу с ассистентом</p>
         <div class="form-error" hidden></div>
         <label class="field">
@@ -125,6 +130,6 @@
     <form method="dialog"><button class="btn primary">Понятно</button></form>
   </dialog>
 
-  <script src="/static/auth.js?v=23"></script>
+  <script src="/static/auth.js?v=29"></script>
 </body>
 </html>

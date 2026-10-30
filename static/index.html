@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=23">
+  <link rel="stylesheet" href="/static/style.css?v=29">
 </head>
 <body>
   <div class="app">
@@ -82,25 +82,26 @@
             </div>
 
             <div class="actions">
-              <button class="action violet" data-prefill="Поставь задачу ">
-                <span class="ico"><svg class="icon"><use href="/static/icons.svg#tasks"/></svg></span>
-                <b>Создать<br>задачу</b>
-                <span class="sub">Добавить задачу<br>с голосом или текстом</span>
-              </button>
-              <button class="action" data-prefill="Добавь встречу ">
-                <span class="ico"><svg class="icon"><use href="/static/icons.svg#users"/></svg></span>
-                <b>Запланировать<br>встречу</b>
-                <span class="sub">Указать дату, время<br>и участников</span>
-              </button>
               <button class="action lime" data-prefill="Напомни ">
-                <span class="ico"><svg class="icon"><use href="/static/icons.svg#bell"/></svg></span>
-                <b>Поставить<br>напоминание</b>
-                <span class="sub">Не пропусти<br>важное</span>
+                <img class="art" src="/static/img/act-remind.webp" alt="" width="375" height="370">
+                <span class="txt"><b>Поставить<br>напоминание</b><span class="sub">Не пропусти<br>важное</span></span>
+                <img class="deco act-remind-ticks" src="/static/img/act-remind-ticks.webp" alt="" width="99" height="125">
+                <img class="deco act-remind-deco" src="/static/img/act-remind-deco.webp" alt="" width="237" height="130">
               </button>
-              <button class="action" data-go="#/calendar">
-                <span class="ico"><svg class="icon"><use href="/static/icons.svg#calendar"/></svg></span>
-                <b>Открыть<br>календарь</b>
-                <span class="sub">Все события<br>в одном месте</span>
+              <button class="action violet" data-prefill="Поставь задачу ">
+                <img class="art" src="/static/img/act-task.webp" alt="" width="380" height="337">
+                <span class="txt"><b>Создать<br>задачу</b><span class="sub">Добавить задачу<br>с голосом или текстом</span></span>
+                <img class="deco act-task-deco" src="/static/img/act-task-deco.webp" alt="" width="286" height="196">
+              </button>
+              <button class="action cream" data-prefill="Добавь встречу ">
+                <img class="art" src="/static/img/act-meet.webp" alt="" width="406" height="381">
+                <span class="txt"><b>Запланировать<br>встречу</b><span class="sub">Указать дату, время<br>и участников</span></span>
+                <img class="deco act-meet-deco" src="/static/img/act-meet-deco.webp" alt="" width="174" height="195">
+              </button>
+              <button class="action cream" data-go="#/calendar">
+                <img class="art" src="/static/img/act-cal.webp" alt="" width="425" height="381">
+                <span class="txt"><b>Открыть<br>календарь</b><span class="sub">Все события<br>в одном месте</span></span>
+                <img class="deco act-cal-deco" src="/static/img/act-cal-deco.webp" alt="" width="101" height="143">
               </button>
             </div>
 
@@ -202,6 +203,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=23"></script>
+  <script src="/static/app.js?v=29"></script>
 </body>
 </html>
