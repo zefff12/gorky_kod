@@ -146,6 +146,7 @@ def event_from_dict(d: dict) -> Event:
         time=time.fromisoformat(d["time"]) if d.get("time") else None,
         duration_min=d.get("duration_min") or 60, done=bool(d.get("done")),
         recurrence=Recurrence(d["recurrence"]) if d.get("recurrence") else None,
+        priority=d.get("priority"),
     )
 
 

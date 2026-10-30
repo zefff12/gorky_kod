@@ -223,16 +223,20 @@ def quick_search(q: str = Query(..., min_length=1, max_length=200), uid: str = D
 
 
 class EventPatch(BaseModel):
-    done: bool
+    done: bool | None = None
+    priority: str | None = Field(None, pattern="^(high|medium|low|none)$")
 
 
 @app.patch("/api/events/{event_id}")
 def update_event(event_id: int, body: EventPatch, uid: str = Depends(current_user)):
-    """Отметить запись выполненной (или снять отметку) кнопкой в интерфейсе."""
+    """Отметить запись выполненной или сменить приоритет кнопкой в интерфейсе."""
     ev = storage.get(uid, event_id)
     if ev is None:
         raise HTTPException(404, "Запись не найдена")
-    ev.done = body.done
+    if body.done is not None:
+        ev.done = body.done
+    if body.priority is not None:
+        ev.priority = None if body.priority == "none" else body.priority
     storage.update(ev)
     return ev.to_dict()
 

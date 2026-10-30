@@ -21,7 +21,7 @@ RESCHEDULE_LEMMAS = {"перенести", "передвинуть", "сдвин
 SEARCH_LEMMAS = {"найти", "искать", "поискать", "отыскать", "найтись", "вспомнить"}
 LIST_LEMMAS = {"показать", "покажи", "расписание", "список", "перечислить", "рассказать", "зачитать", "план", "планы", "дело", "занятой", "занятый"}
 QUESTION_STARTS = {"что", "какой", "какие", "какая", "каких", "чем", "сколько", "есть", "покажи", "покажите", "расскажи", "скажи", "чего"}
-MEETING_LEMMAS = {"встреча", "встретиться", "созвон", "созвониться", "совещание", "планёрка", "планерка", "демо",
+MEETING_LEMMAS = {"встреча", "обсуждение", "встретиться", "созвон", "созвониться", "совещание", "планёрка", "планерка", "демо",
                   "митинг", "переговоры", "собрание", "конференция", "звонок", "собеседование", "обед", "ужин", "стендап", "ретро", "интервью"}
 TASK_LEMMAS = {"задача", "задачка", "todo", "туду"}
 CREATE_LEMMAS = {"поставить", "добавить", "создать", "запланировать", "записать", "назначить", "внести", "завести", "запомнить"}
@@ -217,6 +217,29 @@ def parse_rename(text: str) -> ParsedCommand | None:
     return cmd
 
 
+# приоритет: (нормализованные слова фразы) → значение; совпавшие слова убираются из названия
+PRIORITY_PHRASES = [
+    (("высокий", "приоритет"), "high"), (("приоритет", "высокий"), "high"), (("с", "высоким", "приоритетом"), "high"),
+    (("средний", "приоритет"), "medium"), (("приоритет", "средний"), "medium"), (("со", "средним", "приоритетом"), "medium"),
+    (("низкий", "приоритет"), "low"), (("приоритет", "низкий"), "low"), (("с", "низким", "приоритетом"), "low"),
+    (("не", "срочно"), "low"), (("не", "срочная"), "low"), (("не", "срочную"), "low"),
+    (("срочно",), "high"), (("срочная",), "high"), (("срочную",), "high"), (("важно",), "high"),
+    (("важная",), "high"), (("важную",), "high"), (("очень", "важно"), "high"),
+]
+
+
+def extract_priority(tokens: list[Token]) -> str | None:
+    norms = [t.norm for t in tokens]
+    for phrase, value in sorted(PRIORITY_PHRASES, key=lambda p: -len(p[0])):
+        n = len(phrase)
+        for i in range(len(norms) - n + 1):
+            if tuple(norms[i:i + n]) == phrase and not any(t.used for t in tokens[i:i + n]):
+                for t in tokens[i:i + n]:
+                    t.used = True
+                return value
+    return None
+
+
 FOLLOW_UP_STARTS = {"а", "и", "ну", "тогда", "также", "ещё", "еще"}
 
 
@@ -261,6 +284,14 @@ def parse(text: str, now: datetime, context=None) -> ParsedCommand:
         cmd.extras["duration_min"] = info.duration_min
 
     if intent is Intent.CREATE:
+        priority = extract_priority(tokens)
+        if priority:
+            cmd.extras["priority"] = priority
+        # «… без срока» прямо в команде — не переспрашивать «когда?»
+        for i in range(len(tokens) - 1):
+            if (tokens[i].norm, tokens[i + 1].norm) in (("без", "срока"), ("без", "даты"), ("без", "времени")):
+                tokens[i].used = tokens[i + 1].used = True
+                cmd.extras["no_deadline"] = True
         cmd.event_type = _type_from_lemmas(lemset) or EventType.TASK
         if cmd.event_type is EventType.REMINDER and lemset & MEETING_LEMMAS and "напомнить" not in lemset:
             cmd.event_type = EventType.MEETING

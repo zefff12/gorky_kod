@@ -29,6 +29,7 @@ ORDINALS = {"первую": 0, "первый": 0, "первое": 0, "1": 0, "в
             "пятую": 4, "пятый": 4, "5": 4, "последнюю": -1, "последний": -1, "последнее": -1}
 # «без срока», «не важно», «в течение дня», «когда-нибудь» — пользователь отказывается называть время
 NO_TIME_WORDS = {"без", "неважно", "важно", "любое", "любой", "весь", "течение", "никогда", "когда-нибудь", "потом", "знаю", "любое"}
+PRIORITY_NAMES = {"high": "высокий", "medium": "средний", "low": "низкий"}
 MAX_SPOKEN = 5
 MAX_SHOWN = 30
 UPCOMING_DAYS = dates.UPCOMING_DAYS      # период по умолчанию для «что у меня?»
@@ -270,13 +271,15 @@ class Assistant:
         draft = Event(
             id=None, user_id=user_id, type=etype, title=cmd.title or "", date=cmd.date, time=cmd.time,
             recurrence=cmd.recurrence, duration_min=cmd.extras.get("duration_min") or 60,
+            priority=cmd.extras.get("priority"),
         )
         if not draft.title:
             s.pending = Pending("need_title", draft=draft, deadline=cmd.has_deadline)
             q = {EventType.MEETING: "С кем или о чём встреча?", EventType.REMINDER: "О чём напомнить?",
                  EventType.TASK: "Как назвать задачу?"}[etype]
             return Reply(q, awaiting="need_title", intent="create")
-        return self._finalize_create(user_id, s, draft, now, deadline=cmd.has_deadline)
+        return self._finalize_create(user_id, s, draft, now, deadline=cmd.has_deadline,
+                                     allow_no_time=bool(cmd.extras.get("no_deadline")))
 
     def _finalize_create(self, user_id: str, s: Session, draft: Event, now: datetime,
                          allow_no_time: bool = False, deadline: bool = False, allow_duplicate: bool = False) -> Reply:
@@ -341,6 +344,8 @@ class Assistant:
             text = f"Записал задачу «{saved.title}», срок — {when}."
         else:
             text = f"Записал задачу «{saved.title}» без срока."
+        if saved.priority:
+            text = text.rstrip(".") + f", приоритет {PRIORITY_NAMES[saved.priority]}."
         if saved.start and saved.time and saved.start < now and not saved.recurrence:
             text += " Обратите внимание: это время уже прошло."
         return Reply(text, events=[saved], intent="create")

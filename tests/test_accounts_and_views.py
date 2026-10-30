@@ -177,3 +177,47 @@ def test_event_dict_has_category():
     h = {"X-User-Id": "u-cat"}
     r = c.post("/api/message", json={"text": "Добавь созвон с Иваном завтра в 12"}, headers=h).json()
     assert r["events"][0]["category"] == "call"
+
+
+# ------------------------------------------------------------------ приоритеты (из макета)
+
+@pytest.mark.parametrize("text, title, priority", [
+    ("Срочно подготовить презентацию завтра в 10", "Подготовить презентацию", "high"),
+    ("Поставь задачу написать отчёт со средним приоритетом завтра в 16", "Написать отчёт", "medium"),
+    ("Купить подарок, не срочно, без срока", "Купить подарок", "low"),
+    ("Важная встреча с инвестором завтра в 12", "Встреча с инвестором", "high"),
+    ("Позвонить маме завтра в 9", "Позвонить маме", None),
+])
+def test_priority_from_speech(text, title, priority):
+    c = new_client()
+    h = {"X-User-Id": "u-prio-" + str(abs(hash(text)) % 10_000)}
+    c.post("/api/message", json={"text": text}, headers=h)
+    items = c.get("/api/items", headers=h).json()
+    if not items:                                    # «без срока» могли спросить отдельно
+        c.post("/api/message", json={"text": "без срока"}, headers=h)
+        items = c.get("/api/items", headers=h).json()
+    assert [(e["title"], e["priority"]) for e in items] == [(title, priority)]
+
+
+def test_priority_can_be_changed_and_cleared():
+    c = new_client()
+    h = {"X-User-Id": "u-prio-patch"}
+    c.post("/api/message", json={"text": "Напомни завтра в 10 позвонить Ивану"}, headers=h)
+    eid = c.get("/api/items", headers=h).json()[0]["id"]
+    assert c.patch(f"/api/events/{eid}", json={"priority": "high"}, headers=h).json()["priority"] == "high"
+    assert c.patch(f"/api/events/{eid}", json={"priority": "none"}, headers=h).json()["priority"] is None
+    assert c.patch(f"/api/events/{eid}", json={"priority": "urgent"}, headers=h).status_code == 422
+
+
+def test_old_database_gets_priority_column(tmp_path):
+    import sqlite3
+    from app.storage import Storage
+    db = tmp_path / "old.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, type TEXT NOT NULL,"
+                " title TEXT NOT NULL, date TEXT, time TEXT, duration_min INTEGER NOT NULL DEFAULT 60,"
+                " done INTEGER NOT NULL DEFAULT 0, recurrence TEXT, created_at TEXT NOT NULL, source_text TEXT)")
+    con.execute("INSERT INTO events (user_id, type, title, created_at) VALUES ('u', 'task', 'Старая задача', '2026-01-01T00:00:00')")
+    con.commit(); con.close()
+    [ev] = Storage(db).all("u")
+    assert ev.title == "Старая задача" and ev.priority is None

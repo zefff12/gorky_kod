@@ -12,6 +12,9 @@ class EventType(str, Enum):
     REMINDER = "reminder"
 
 
+PRIORITIES = ("high", "medium", "low")
+
+
 class Intent(str, Enum):
     CREATE = "create"          # создать задачу / напоминание / встречу
     LIST = "list"              # что у меня на период
@@ -45,6 +48,7 @@ class Event:
     recurrence: Recurrence | None = None
     created_at: datetime | None = None
     source_text: str | None = None
+    priority: str | None = None         # high | medium | low | None
 
     @property
     def start(self) -> datetime | None:
@@ -62,6 +66,7 @@ class Event:
             "duration_min": self.duration_min,
             "done": self.done,
             "recurrence": self.recurrence.value if self.recurrence else None,
+            "priority": self.priority,
             "created_at": self.created_at.isoformat(timespec="seconds") if self.created_at else None,
             "category": _category(self),
         }

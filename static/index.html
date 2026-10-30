@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=16">
+  <link rel="stylesheet" href="/static/style.css?v=23">
 </head>
 <body>
   <div class="app">
@@ -25,7 +25,7 @@
         <a href="#/reminders" data-view="reminders"><svg class="icon"><use href="/static/icons.svg#bell"/></svg>Напоминания<span class="badge" id="remindBadge" hidden></span></a>
         <a href="#/history" data-view="history"><svg class="icon"><use href="/static/icons.svg#clock"/></svg>История</a>
       </nav>
-      <div class="promo"><img class="blend" src="/static/img/promo.webp" alt="Планируй легче с голосовым ассистентом" width="420" height="581" loading="lazy"></div>
+      <div class="promo"><img class="blend" src="/static/img/promo.webp" alt="Планируй легче с голосовым ассистентом" width="190" height="288"></div>
       <div class="profile">
         <button class="avatar" id="profileAvatar" aria-label="Меню профиля">?</button>
         <div class="who"><b id="profileName">Гость</b><span id="profileRole">Без регистрации</span></div>
@@ -39,7 +39,7 @@
       <header class="topbar">
         <div class="search">
           <svg class="icon"><use href="/static/icons.svg#search"/></svg>
-          <input id="search" type="search" placeholder="Найти задачу или встречу…" autocomplete="off" aria-label="Поиск по задачам и встречам">
+          <input id="search" type="search" placeholder="Найти задачу, встречу или документ…" autocomplete="off" aria-label="Поиск по задачам и встречам">
           <kbd>Ctrl + K</kbd>
           <div class="menu search-results" id="searchResults" hidden></div>
         </div>
@@ -83,34 +83,34 @@
 
             <div class="actions">
               <button class="action violet" data-prefill="Поставь задачу ">
-                <img src="/static/img/card-task.webp" alt="" width="220" height="205">
-                <div><b>Создать<br>задачу</b><span>Добавить задачу с голосом или текстом</span></div>
-                <span class="round-btn go"><svg class="icon sm"><use href="/static/icons.svg#chevron-right"/></svg></span>
+                <span class="ico"><svg class="icon"><use href="/static/icons.svg#tasks"/></svg></span>
+                <b>Создать<br>задачу</b>
+                <span class="sub">Добавить задачу<br>с голосом или текстом</span>
               </button>
               <button class="action" data-prefill="Добавь встречу ">
-                <img src="/static/img/card-meeting.webp" alt="" width="220" height="205">
-                <div><b>Запланировать<br>встречу</b><span>Указать дату, время и участников</span></div>
-                <span class="round-btn go"><svg class="icon sm"><use href="/static/icons.svg#chevron-right"/></svg></span>
+                <span class="ico"><svg class="icon"><use href="/static/icons.svg#users"/></svg></span>
+                <b>Запланировать<br>встречу</b>
+                <span class="sub">Указать дату, время<br>и участников</span>
               </button>
               <button class="action lime" data-prefill="Напомни ">
-                <img src="/static/img/card-reminder.webp" alt="" width="220" height="205">
-                <div><b>Поставить<br>напоминание</b><span>Не пропусти важное</span></div>
-                <span class="round-btn go"><svg class="icon sm"><use href="/static/icons.svg#chevron-right"/></svg></span>
+                <span class="ico"><svg class="icon"><use href="/static/icons.svg#bell"/></svg></span>
+                <b>Поставить<br>напоминание</b>
+                <span class="sub">Не пропусти<br>важное</span>
               </button>
               <button class="action" data-go="#/calendar">
-                <img src="/static/img/card-calendar.webp" alt="" width="220" height="205">
-                <div><b>Открыть<br>календарь</b><span>Все события в одном месте</span></div>
-                <span class="round-btn go"><svg class="icon sm"><use href="/static/icons.svg#chevron-right"/></svg></span>
+                <span class="ico"><svg class="icon"><use href="/static/icons.svg#calendar"/></svg></span>
+                <b>Открыть<br>календарь</b>
+                <span class="sub">Все события<br>в одном месте</span>
               </button>
             </div>
 
             <div class="bottom">
               <div class="card panel">
-                <div class="card-head"><h2>Сегодня<span class="sub" id="todayLabel"></span></h2><a class="link-more" href="#/tasks?preset=today">Смотреть все →</a></div>
+                <div class="card-head"><h2>Сегодня<span class="sub" id="todayLabel"></span></h2><a class="link-more" href="#/tasks?preset=today">Смотреть все</a></div>
                 <div class="rows" id="todayList"></div>
               </div>
               <div class="card panel">
-                <div class="card-head"><h2>Ближайшие встречи</h2><a class="link-more" href="#/meetings">Смотреть все →</a></div>
+                <div class="card-head"><h2>Ближайшие встречи</h2><a class="link-more" href="#/meetings">Смотреть все</a></div>
                 <div class="rows" id="meetList"></div>
               </div>
             </div>
@@ -118,42 +118,28 @@
 
           <div class="col side">
             <div class="card week">
-              <div class="card-head"><h2>Ближайшие 7 дней</h2><a class="link-more" href="#/calendar">Открыть календарь →</a></div>
+              <div class="card-head"><h2>Ближайшие 7 дней</h2><a class="link-more" href="#/calendar">Открыть календарь</a></div>
               <div class="days" id="days"></div>
               <div class="agenda-list" id="agenda"></div>
               <a class="btn" href="#/tasks"><svg class="icon sm"><use href="/static/icons.svg#calendar"/></svg>Посмотреть все события</a>
-            </div>
-
-            <div class="card popular">
-              <div class="card-head"><h2>Популярные команды</h2></div>
-              <ol id="popular">
-                <li><button><span class="n">1</span>Что у меня на этой неделе?</button></li>
-                <li><button><span class="n">2</span>Добавь встречу в пятницу в 15:00</button></li>
-                <li><button><span class="n">3</span>Поставь напоминание завтра</button></li>
-                <li><button><span class="n">4</span>Найди задачу про презентацию</button></li>
-                <li><button><span class="n">5</span>Когда у меня встреча с Иваном?</button></li>
-              </ol>
-              <svg class="star" aria-hidden="true"><use href="/static/icons.svg#star"/></svg>
             </div>
 
             <div class="card features">
               <div class="card-head" style="margin-bottom:4px"><h2>Полезные возможности</h2></div>
               <button class="feature" data-feature="voice">
                 <span class="ico"><svg class="icon"><use href="/static/icons.svg#mic"/></svg></span>
-                <span><b>Управление голосом</b><small>Создавай, переноси и удаляй задачи</small></span>
-                <svg class="icon sm"><use href="/static/icons.svg#chevron-right"/></svg>
+                <span><b>Управление голосом</b><small>Создавай, редактируй, удаляй задачи</small></span>
               </button>
               <button class="feature" data-feature="search">
                 <span class="ico"><svg class="icon"><use href="/static/icons.svg#search"/></svg></span>
                 <span><b>Умный поиск</b><small>Найди любую задачу или встречу</small></span>
-                <svg class="icon sm"><use href="/static/icons.svg#chevron-right"/></svg>
               </button>
               <button class="feature" data-feature="calendar">
                 <span class="ico"><svg class="icon"><use href="/static/icons.svg#calendar"/></svg></span>
                 <span><b>Календарь событий</b><small>Все события в одном месте</small></span>
-                <svg class="icon sm"><use href="/static/icons.svg#chevron-right"/></svg>
               </button>
             </div>
+            <img class="side-art blend" src="/static/img/girl.webp" alt="" width="386" height="318">
           </div>
         </div>
       </section>
@@ -216,6 +202,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=15"></script>
+  <script src="/static/app.js?v=23"></script>
 </body>
 </html>

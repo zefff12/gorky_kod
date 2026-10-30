@@ -126,14 +126,28 @@
         const del = el("button", "danger");
         del.append(icon("trash", "icon sm"), "Удалить");
         del.onclick = () => { closeMenus(); removeEvent(e); };
-        m.append(done, say, el("hr"), del);
+        const prios = el("div", "note", "Приоритет");
+        m.append(done, say, el("hr"), prios);
+        for (const [value, name] of [["high", "Высокий"], ["medium", "Средний"], ["low", "Низкий"], ["none", "Без приоритета"]]) {
+          const b = el("button");
+          b.append(el("span", value === "none" ? "prio" : `prio ${value}`, name));
+          if ((e.priority || "none") === value) b.append(icon("check", "icon sm"));
+          b.onclick = () => { closeMenus(); setPriority(e, value); };
+          m.append(b);
+        }
+        m.append(el("hr"), del);
       });
     };
     host.appendChild(menu);
     return btn;
   }
 
-  function rowEl(e, { showDate = false } = {}) {
+  const PRIO_NAME = { high: "Высокий", medium: "Средний", low: "Низкий" };
+  const KIND_ICON = { task: "doc", meeting: "users", reminder: "bell" };
+
+  // compact — строка как в блоке «Сегодня» макета: приоритет и иконка типа;
+  // иначе (страницы-списки) ещё плашка типа и иллюстрация категории
+  function rowEl(e, { showDate = false, compact = false } = {}) {
     const row = el("div", `row${e.done ? " done" : ""}`);
     const cb = el("input", "check");
     cb.type = "checkbox";
@@ -141,19 +155,31 @@
     cb.setAttribute("aria-label", e.done ? "Снять отметку" : "Отметить выполненной");
     cb.onchange = () => setDone(e, cb.checked);
     const title = el("div", "title");
-    title.append(el("span", "t", e.title + (e.recurrence ? " ↻" : "")), el("span", `pill ${e.type}`, TYPE_NAME[e.type]));
+    title.append(el("span", "t", e.title + (e.recurrence ? " ↻" : "")));
+    if (!compact) title.append(el("span", `pill ${e.type}`, TYPE_NAME[e.type]));
     if (isOverdue(e)) title.append(el("span", "pill overdue", "Просрочено"));
+    const prio = e.priority ? el("span", `prio ${e.priority}`, PRIO_NAME[e.priority]) : el("span");
     const when = el("div", "when");
-    when.append(icon(e.date ? "clock" : "calendar", "icon sm"),
+    when.append(icon(!e.date ? "calendar" : e.type === "task" && e.time ? "calendar" : "clock", "icon sm"),
       showDate && e.date ? `${dayLabel(e.date)}${e.time ? ", " + timeRange(e) : ""}` : timeRange(e));
-    row.append(cb, title, when, catImg(e) || el("span"), moreButton(e, row));
+    const kind = el("span", "kind");
+    kind.title = TYPE_NAME[e.type];
+    kind.append(compact ? icon(KIND_ICON[e.type]) : (catImg(e) || icon(KIND_ICON[e.type])));
+    row.append(cb, title, prio, when, kind, moreButton(e, row));
     return row;
+  }
+
+  async function setPriority(e, priority) {
+    await api(`/api/events/${e.id}`, { method: "PATCH", body: JSON.stringify({ priority }) });
+    await refresh();
   }
 
   function meetEl(e) {
     const m = el("div", "meet");
-    const ico = el("div", "ico");
-    ico.append(catImg(e, "") || icon("video"));
+    // в макете: созвоны и обсуждения — красная плитка с камерой, остальные встречи — фиолетовая с людьми
+    const video = ["call", "discussion"].includes(e.category);
+    const ico = el("div", `ico ${video ? "red" : "purple"}`);
+    ico.append(icon(video ? "video" : "users"));
     const info = el("div");
     info.append(el("b", null, e.title), el("small", null, `${e.date ? dayLabel(e.date) : ""}, ${timeRange(e)}`));
     m.append(ico, info, moreButton(e, m));
@@ -204,7 +230,7 @@
 
   $("form").onsubmit = (e) => { e.preventDefault(); send(input.value); };
   $("chips").onclick = (e) => { const b = e.target.closest("button"); if (b) send(b.textContent); };
-  $("popular").onclick = (e) => { const b = e.target.closest("button"); if (b) send(b.lastChild.textContent); };
+
   document.querySelectorAll("[data-prefill]").forEach((b) => b.onclick = () => prefill(b.dataset.prefill));
   document.querySelectorAll("[data-go]").forEach((b) => b.onclick = () => go(b.dataset.go));
   document.querySelectorAll("[data-feature]").forEach((b) => b.onclick = () => {
@@ -317,7 +343,7 @@
     todayList.replaceChildren();
     const todays = events.filter((e) => e.date === today || e.date === null);
     if (!todays.length) todayList.append(emptyEl("На сегодня ничего нет. Скажите, например: «Напомни в 18:00 купить хлеб»."));
-    todays.slice(0, 6).forEach((e) => todayList.appendChild(rowEl(e)));
+    todays.slice(0, 6).forEach((e) => todayList.appendChild(rowEl(e, { compact: true })));
 
     // ближайшие встречи
     const meets = await getJSON(`/api/items?types=meeting&status=active&undated=false&start=${today}&end=${iso(addDays(TODAY, 90))}`);
@@ -699,10 +725,10 @@
       if (!isNaN(d)) TODAY = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     } catch {}
     renderProfile();
+    // как в макете: на главной нет старой переписки — она в разделе «История»,
+    // лента появляется с первой репликой
     const restored = await restoreIfNeeded();
-    const count = await loadDialog();
-    if (restored) addMsg("Восстановил ваши записи и наш разговор после перезапуска сервера.", "bot");
-    else if (!count) greet();
+    if (restored) toast("Восстановил ваши записи и наш разговор после перезапуска сервера");
     const welcome = store.get("welcome", "");
     if (welcome) { toast(welcome); store.set("welcome", ""); }
     await route();

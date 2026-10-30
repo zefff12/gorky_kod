@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS events (
     done         INTEGER NOT NULL DEFAULT 0,
     recurrence   TEXT,                -- daily | weekly | weekdays | NULL
     created_at   TEXT    NOT NULL,
-    source_text  TEXT                 -- исходная фраза пользователя / строка CSV
+    source_text  TEXT,                -- исходная фраза пользователя / строка CSV
+    priority     TEXT                 -- high | medium | low | NULL
 );
 CREATE INDEX IF NOT EXISTS idx_events_user_date ON events (user_id, date);
 
@@ -78,6 +79,7 @@ def _row_to_event(row: sqlite3.Row) -> Event:
         duration_min=row["duration_min"],
         done=bool(row["done"]),
         recurrence=Recurrence(row["recurrence"]) if row["recurrence"] else None,
+        priority=row["priority"],
         created_at=datetime.fromisoformat(row["created_at"]),
         source_text=row["source_text"],
     )
@@ -105,6 +107,10 @@ class Storage:
         self._shared = sqlite3.connect(":memory:", check_same_thread=False) if self.path == ":memory:" else None
         with self._conn() as c:
             c.executescript(SCHEMA)
+            # миграция баз, созданных до появления приоритетов
+            columns = {r["name"] for r in c.execute("PRAGMA table_info(events)")}
+            if "priority" not in columns:
+                c.execute("ALTER TABLE events ADD COLUMN priority TEXT")
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -123,15 +129,15 @@ class Storage:
         created = ev.created_at or datetime.now().replace(microsecond=0)
         with self._conn() as c:
             cur = c.execute(
-                "INSERT INTO events (user_id, type, title, date, time, duration_min, done, recurrence, created_at, source_text)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO events (user_id, type, title, date, time, duration_min, done, recurrence, created_at, source_text, priority)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     ev.user_id, ev.type.value, ev.title,
                     ev.date.isoformat() if ev.date else None,
                     ev.time.strftime("%H:%M") if ev.time else None,
                     ev.duration_min, int(ev.done),
                     ev.recurrence.value if ev.recurrence else None,
-                    created.isoformat(timespec="seconds"), ev.source_text,
+                    created.isoformat(timespec="seconds"), ev.source_text, ev.priority,
                 ),
             )
         return replace(ev, id=cur.lastrowid, created_at=created)
@@ -139,8 +145,8 @@ class Storage:
     def add_many(self, events: list[Event]) -> None:
         with self._conn() as c:
             c.executemany(
-                "INSERT INTO events (user_id, type, title, date, time, duration_min, done, recurrence, created_at, source_text)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO events (user_id, type, title, date, time, duration_min, done, recurrence, created_at, source_text, priority)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         e.user_id, e.type.value, e.title,
@@ -148,7 +154,7 @@ class Storage:
                         e.time.strftime("%H:%M") if e.time else None,
                         e.duration_min, int(e.done),
                         e.recurrence.value if e.recurrence else None,
-                        (e.created_at or datetime.now()).isoformat(timespec="seconds"), e.source_text,
+                        (e.created_at or datetime.now()).isoformat(timespec="seconds"), e.source_text, e.priority,
                     )
                     for e in events
                 ],
@@ -162,15 +168,15 @@ class Storage:
     def update(self, ev: Event) -> None:
         with self._conn() as c:
             c.execute(
-                "UPDATE events SET type = ?, title = ?, date = ?, time = ?, duration_min = ?, done = ?, recurrence = ?"
-                " WHERE id = ? AND user_id = ?",
+                "UPDATE events SET type = ?, title = ?, date = ?, time = ?, duration_min = ?, done = ?, recurrence = ?,"
+                " priority = ? WHERE id = ? AND user_id = ?",
                 (
                     ev.type.value, ev.title,
                     ev.date.isoformat() if ev.date else None,
                     ev.time.strftime("%H:%M") if ev.time else None,
                     ev.duration_min, int(ev.done),
                     ev.recurrence.value if ev.recurrence else None,
-                    ev.id, ev.user_id,
+                    ev.priority, ev.id, ev.user_id,
                 ),
             )
 
@@ -289,6 +295,7 @@ class Storage:
                 recurrence=Recurrence(raw["recurrence"]) if raw.get("recurrence") else None,
                 created_at=datetime.fromisoformat(raw["created_at"]) if raw.get("created_at") else None,
                 source_text=raw.get("source_text"),
+                priority=raw.get("priority") if raw.get("priority") in ("high", "medium", "low") else None,
             )
             saved = self.add(ev)
             if raw.get("id") is not None:

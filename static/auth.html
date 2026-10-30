@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&family=Caveat:wght@700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=16">
+  <link rel="stylesheet" href="/static/style.css?v=23">
 </head>
 <body>
   <main class="auth">
@@ -31,8 +31,8 @@
           <li><span class="ico"><svg class="icon"><use href="/static/icons.svg#sparkle"/></svg></span>Все инструменты<br>в одном месте</li>
         </ul>
       </div>
-      <img class="auth-art blend" data-mode="login" src="/static/img/auth-login.webp" alt="" width="465" height="598">
-      <img class="auth-art blend" data-mode="register" src="/static/img/auth-register.webp" alt="" width="450" height="528" hidden>
+      <img class="auth-art blend" data-mode="login" src="/static/img/auth-login.webp" alt="" width="456" height="608">
+      <img class="auth-art blend" data-mode="register" src="/static/img/auth-register.webp" alt="" width="406" height="550" hidden>
     </section>
 
     <section class="card form-card">
@@ -51,10 +51,10 @@
           <button type="button" class="eye" aria-label="Показать пароль"><svg class="icon"><use href="/static/icons.svg#eye-off"/></svg></button>
         </label>
         <div class="line-opts">
-          <label><input type="checkbox" class="check" name="remember" checked> Запомнить меня</label>
+          <label><input type="checkbox" class="check" name="remember"> Запомнить меня</label>
           <button type="button" class="linkish" data-open="forgot">Забыли пароль?</button>
         </div>
-        <button class="submit" type="submit">Войти <span class="go"><svg class="icon"><use href="/static/icons.svg#arrow-right"/></svg></span></button>
+        <button class="submit" type="submit">Войти</button>
         <p class="alt">Нет аккаунта? <a href="/register">Зарегистрироваться</a></p>
         <a class="guest" href="/" data-guest>Продолжить без регистрации →</a>
       </form>
@@ -100,7 +100,7 @@
             и <button type="button" class="linkish" data-open="privacy">Политики конфиденциальности</button></span>
         </label>
         <span class="err" data-err="accept" style="display:block;margin:-10px 0 12px;color:var(--danger);font-size:13px"></span>
-        <button class="submit" type="submit">Зарегистрироваться <span class="go"><svg class="icon"><use href="/static/icons.svg#arrow-right"/></svg></span></button>
+        <button class="submit" type="submit">Зарегистрироваться</button>
         <a class="guest" href="/" data-guest>Продолжить без регистрации →</a>
       </form>
     </section>
@@ -125,6 +125,6 @@
     <form method="dialog"><button class="btn primary">Понятно</button></form>
   </dialog>
 
-  <script src="/static/auth.js?v=15"></script>
+  <script src="/static/auth.js?v=23"></script>
 </body>
 </html>
