@@ -119,7 +119,7 @@ def _context_from_dict(d: dict | None) -> DialogContext | None:
 
 
 def event_to_dict(e: Event) -> dict:
-    return e.to_dict() | {"user_id": e.user_id}
+    return e.to_dict() | {"user_id": e.user_id, "also_remind": e.also_remind}
 
 
 def event_from_dict(d: dict) -> Event:
@@ -129,7 +129,7 @@ def event_from_dict(d: dict) -> Event:
         time=time.fromisoformat(d["time"]) if d.get("time") else None,
         duration_min=d.get("duration_min") or 60, done=bool(d.get("done")),
         recurrence=Recurrence(d["recurrence"]) if d.get("recurrence") else None,
-        priority=d.get("priority"),
+        priority=d.get("priority"), also_remind=bool(d.get("also_remind")),
     )
 
 

@@ -92,15 +92,21 @@
   });
 
   //действия с записями
+  // у повторяющейся записи отметка и удаление относятся к одному дню серии
+  const occurrenceDay = (e) => (e.recurrence && e.occurrence ? e.date : null);
   async function setDone(e, done) {
-    await api(`/api/events/${e.id}`, { method: "PATCH", body: JSON.stringify({ done }) });
+    const day = occurrenceDay(e);
+    const r = await api(`/api/events/${e.id}`, { method: "PATCH", body: JSON.stringify(day ? { done, date: day } : { done }) });
+    const when = e.recurrence ? ` (${dayLabel(day || todayIso()).toLowerCase()})` : "";
+    if (r.ok) toast(done ? `«${e.title}»${when} — в разделе «Выполненные»` : `«${e.title}»${when} снова в работе`);
     await refresh();
   }
-  async function removeEvent(e) {
-    const extra = e.recurrence ? " Это повторяющаяся запись — удалятся все повторы." : "";
-    if (!confirm(`Удалить «${e.title}»?${extra}`)) return;
-    const r = await api(`/api/events/${e.id}`, { method: "DELETE" });
-    if (r.ok) toast(`Удалил «${e.title}»`);
+  async function removeEvent(e, onlyDay = null) {
+    const question = onlyDay ? `Удалить «${e.title}» только ${dayLabel(onlyDay, true).toLowerCase()}? В остальные дни запись останется.`
+      : e.recurrence ? `Удалить «${e.title}» со всеми повторами?` : `Удалить «${e.title}»?`;
+    if (!confirm(question)) return;
+    const r = await api(`/api/events/${e.id}${onlyDay ? `?date=${onlyDay}` : ""}`, { method: "DELETE" });
+    if (r.ok) toast(onlyDay ? `Убрал «${e.title}» на ${dayLabel(onlyDay).toLowerCase()}` : `Удалил «${e.title}»`);
     await refresh();
   }
   function moreButton(e, host) {
@@ -120,9 +126,17 @@
         const say = el("button");
         say.append(icon("mic", "icon sm"), "Перенести голосом");
         say.onclick = () => { closeMenus(); go("#/"); prefill(`Перенеси «${e.title}» на `); };
+        const dels = [];
+        if (occurrenceDay(e)) {
+          const one = el("button", "danger");
+          one.append(icon("trash", "icon sm"), "Удалить только этот день");
+          one.onclick = () => { closeMenus(); removeEvent(e, e.date); };
+          dels.push(one);
+        }
         const del = el("button", "danger");
-        del.append(icon("trash", "icon sm"), "Удалить");
+        del.append(icon("trash", "icon sm"), e.recurrence ? "Удалить все повторы" : "Удалить");
         del.onclick = () => { closeMenus(); removeEvent(e); };
+        dels.push(del);
         const prios = el("div", "note", "Приоритет");
         m.append(done, say, el("hr"), prios);
         for (const [value, name] of [["high", "Высокий"], ["medium", "Средний"], ["low", "Низкий"], ["none", "Без приоритета"]]) {
@@ -132,7 +146,7 @@
           b.onclick = () => { closeMenus(); setPriority(e, value); };
           m.append(b);
         }
-        m.append(el("hr"), del);
+        m.append(el("hr"), ...dels);
       });
     };
     host.appendChild(menu);
@@ -206,7 +220,7 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const m = addMsg(data.text, "bot", data.awaiting ? "ask" : "");
-      m.appendChild(el("span", "tag", `${data.intent}${data.parser ? " · " + data.parser : ""}`));
+      m.appendChild(el("span", "tag", replyTag(data)));
       speak(data.speech);
       statusEl.textContent = data.awaiting ? "Жду уточнения — ответьте голосом или текстом" : "";
       await refresh();
@@ -215,6 +229,16 @@
       addMsg("Не удалось связаться с сервером. Если сайт долго не открывался, подождите минуту — бесплатный хостинг просыпается.", "bot");
       statusEl.textContent = "Ошибка соединения";
     }
+  }
+  const INTENT_NAMES = { create: "создание записи", list: "список", search: "поиск", reschedule: "перенос",
+    complete: "отметка о выполнении", delete: "удаление", rename: "переименование", confirm: "подтверждение",
+    reject: "отмена", help: "справка", smalltalk: "разговор", empty: "пустой запрос", error: "ошибка",
+    unknown: "не понял запрос" };
+  const PARSER_NAMES = { rules: "разбор по правилам", llm: "разбор нейросетью" };
+  function replyTag(data) {
+    const parts = [INTENT_NAMES[data.intent] || "ответ"];
+    if (data.parser) parts.push(PARSER_NAMES[data.parser] || "разбор нейросетью");
+    return parts.join(" · ");
   }
   function prefill(text) {
     input.value = text;
@@ -256,8 +280,29 @@
   stopBtn.onclick = stopSpeaking;
 
   //распознавание речи
+  // Слушаем непрерывно, без ограничения по длительности. Короткие паузы не обрывают фразу:
+  // запрос уходит ассистенту, когда пользователь молчит SILENCE_MS или снова нажимает микрофон.
+  const SILENCE_MS = 3000;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  let rec = null, recording = false, interimEl = null;
+  let rec = null, listening = false, interimEl = null, heard = "", pending = "", silenceTimer = null;
+  function showHeard() {
+    const text = (heard + " " + pending).trim();
+    if (!text) return;
+    interimEl = interimEl || addMsg("", "user", "interim");
+    interimEl.textContent = text;
+    log.scrollTop = log.scrollHeight;
+  }
+  function finishListening() {
+    clearTimeout(silenceTimer);
+    const text = (heard + " " + pending).trim();
+    listening = false;
+    heard = pending = "";
+    if (interimEl) { interimEl.remove(); interimEl = null; }
+    try { rec.stop(); } catch {}
+    mic.classList.remove("recording");
+    statusEl.textContent = "";
+    if (text) send(text);
+  }
   if (!SR) {
     mic.disabled = true;
     mic.title = "Браузер не поддерживает распознавание речи — используйте Chrome, Edge или Safari, либо пишите текстом";
@@ -265,34 +310,51 @@
     rec = new SR();
     rec.lang = "ru-RU";
     rec.interimResults = true;
-    rec.continuous = false;
-    rec.onstart = () => { recording = true; mic.classList.add("recording"); statusEl.textContent = "Слушаю…"; stopSpeaking(); };
+    rec.continuous = true;
+    rec.onstart = () => { mic.classList.add("recording"); statusEl.textContent = "Слушаю… Отправлю, когда вы замолчите на 3 секунды"; stopSpeaking(); };
     rec.onend = () => {
-      recording = false; mic.classList.remove("recording");
-      if (interimEl) { interimEl.remove(); interimEl = null; }
-      if (statusEl.textContent === "Слушаю…") statusEl.textContent = "";
+      // браузер сам завершает сеанс распознавания (тишина, лимит сервиса) — продолжаем слушать
+      if (listening) { try { rec.start(); return; } catch {} }
+      mic.classList.remove("recording");
     };
     rec.onerror = (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;      // пауза — не ошибка
+      listening = false;
+      clearTimeout(silenceTimer);
       statusEl.textContent = { "not-allowed": "Нет доступа к микрофону — разрешите его в настройках браузера",
-        "no-speech": "Ничего не услышал, попробуйте ещё раз",
+        "service-not-allowed": "Нет доступа к микрофону — разрешите его в настройках браузера",
         "network": "Распознавание речи недоступно без интернета" }[e.error] || `Ошибка распознавания: ${e.error}`;
     };
     rec.onresult = (e) => {
-      let interim = "", final = "";
+      pending = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
-        (r.isFinal ? (final += r[0].transcript) : (interim += r[0].transcript));
+        if (r.isFinal) heard = `${heard} ${r[0].transcript}`.trim();
+        else pending += r[0].transcript;
       }
-      if (interim) { interimEl = interimEl || addMsg("", "user", "interim"); interimEl.textContent = interim; }
-      if (final) { if (interimEl) { interimEl.remove(); interimEl = null; } send(final); }
+      showHeard();
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(finishListening, SILENCE_MS);
     };
-    mic.onclick = () => { if (location.hash && location.hash !== "#/") go("#/"); recording ? rec.stop() : rec.start(); };
+    mic.onclick = () => {
+      if (location.hash && location.hash !== "#/") go("#/");
+      if (listening) { finishListening(); return; }
+      listening = true;
+      heard = pending = "";
+      try { rec.start(); } catch {}
+    };
   }
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { stopSpeaking(); closeMenus(); }
     if (e.ctrlKey && e.code === "Space" && rec) { e.preventDefault(); mic.click(); }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("search").focus(); }
-  });
+    // по коду клавиши, а не по символу: в русской раскладке Ctrl+K даёт «л»
+    if ((e.ctrlKey || e.metaKey) && (e.code === "KeyK" || ["k", "л"].includes(e.key.toLowerCase()))) {
+      e.preventDefault();
+      e.stopPropagation();
+      $("search").focus();
+      $("search").select();
+    }
+  }, true);
 
   //главная
   let selectedDay = null;
@@ -348,15 +410,18 @@
 
   //списки с фильтрами
   const LISTS = {
-    tasks: { title: "Мои задачи", sub: "Все записи — выберите период или даты", types: "", prefill: "Поставь задачу ",
-      presets: ["all", "today", "week", "month", "overdue", "undated", "done"] },
+    tasks: { title: "Мои задачи", sub: "Невыполненные записи — выберите период или даты", types: "", prefill: "Поставь задачу ",
+      presets: ["all", "today", "week", "month", "overdue", "undated"] },
     meetings: { title: "Встречи", sub: "Предстоящие и прошедшие встречи", types: "meeting", prefill: "Добавь встречу ",
       presets: ["upcoming", "today", "week", "month", "past", "all"] },
     reminders: { title: "Напоминания", sub: "Всё, о чём ассистент должен напомнить", types: "reminder", prefill: "Напомни ",
-      presets: ["upcoming", "today", "week", "overdue", "done", "all"] },
+      presets: ["upcoming", "today", "week", "overdue", "all"] },
+    done: { title: "Выполненные", sub: "Задачи, встречи и напоминания, которые вы уже отметили", types: "", status: "done",
+      presets: ["all", "lastweek", "lastmonth"], newestFirst: true },
   };
   const PRESET_NAMES = { all: "Все", today: "Сегодня", week: "Неделя", month: "Месяц", overdue: "Просроченные",
-    undated: "Без срока", done: "Выполненные", upcoming: "Предстоящие", past: "Прошедшие", custom: "Период" };
+    undated: "Без срока", done: "Выполненные", upcoming: "Предстоящие", past: "Прошедшие", custom: "Период",
+    lastweek: "За неделю", lastmonth: "За месяц" };
   let listKind = "tasks", listPreset = "all", queryTimer, listSeq = 0, calSeq = 0;
 
   function presetRange(p) {
@@ -367,6 +432,8 @@
       case "month": return [t, addDays(t, 30)];
       case "upcoming": return [t, addDays(t, 365)];
       case "past": return [addDays(t, -3650), addDays(t, -1)];
+      case "lastweek": return [addDays(t, -6), t];
+      case "lastmonth": return [addDays(t, -30), t];
       default: return [null, null];
     }
   }
@@ -374,9 +441,11 @@
   function applyPreset(p) {
     listPreset = p;
     const [a, b] = presetRange(p);
-    $("from").value = a ? iso(a) : "";
-    $("to").value = b ? iso(b) : "";
-    $("statusFilter").value = { overdue: "overdue", done: "done", upcoming: "active" }[p] || "all";
+    setPicker("from", a);
+    setPicker("to", b);
+    const cfg = LISTS[listKind];
+    // выполненные живут в своём разделе, остальные списки по умолчанию показывают только невыполненное
+    $("statusFilter").value = cfg.status || { overdue: "overdue", upcoming: "active" }[p] || (listKind === "meetings" ? "all" : "active");
     renderList();
   }
 
@@ -387,7 +456,9 @@
     $("listSub").textContent = cfg.sub;
     $("typeFilter").hidden = !!cfg.types;
     $("typeFilter").value = "";
+    $("statusFilter").hidden = !!cfg.status;
     $("listQuery").value = "";
+    $("listAdd").hidden = !cfg.prefill;
     $("listAdd").onclick = () => { go("#/"); prefill(cfg.prefill); };
     const seg = $("presets");
     seg.replaceChildren();
@@ -400,7 +471,20 @@
     applyPreset(preset && cfg.presets.includes(preset) ? preset : cfg.presets[0]);
   }
 
+  const pickers = {};
+  for (const id of ["from", "to"]) {
+    pickers[id] = window.flatpickr ? flatpickr($(id), {
+      locale: "ru", dateFormat: "Y-m-d", altInput: true, altFormat: "j M Y", disableMobile: true,
+      onChange: () => { listPreset = "custom"; renderList(); },
+    }) : null;
+    if (!pickers[id]) { $(id).type = "date"; $(id).readOnly = false; }
+  }
+  function setPicker(id, date) {
+    if (pickers[id]) date ? pickers[id].setDate(date, false) : pickers[id].clear(false);
+    else $(id).value = date ? iso(date) : "";
+  }
   ["from", "to", "typeFilter", "statusFilter"].forEach((id) => $(id).addEventListener("change", () => {
+    if (pickers[id]) return;                     // у выбора дат свой обработчик
     if (id === "from" || id === "to") listPreset = "custom";
     renderList();
   }));
@@ -426,7 +510,7 @@
     let events = await getJSON(`/api/items?${params}`);
     if (seq !== listSeq) return;
     if (undatedOnly) events = events.filter((e) => e.date === null);
-    if (listPreset === "past") events.reverse();
+    if (listPreset === "past" || cfg.newestFirst) events.reverse();
 
     const body = $("listBody");
     body.replaceChildren();
@@ -435,7 +519,8 @@
     $("listSummary").textContent = `${events.length} ${plural(events.length, "запись", "записи", "записей")}${period}`
       + (events.length > shown.length ? ` · показаны первые ${shown.length}` : "");
     if (!events.length) {
-      body.append(emptyEl(q ? "Ничего не нашлось. Попробуйте другое слово." : "За выбранный период записей нет."));
+      body.append(emptyEl(q ? "Ничего не нашлось. Попробуйте другое слово."
+        : cfg.status === "done" ? "Здесь появятся записи, которые вы отметите выполненными." : "За выбранный период записей нет."));
       return;
     }
     let group = undefined, rows = null;
@@ -459,46 +544,60 @@
   }
 
   //календарь
-  let calMonth = null, calSel = null;
-  async function renderCalendar() {
-    calMonth = calMonth || new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
-    calSel = calSel || todayIso();
-    $("calTitle").textContent = `${MONTHS[calMonth.getMonth()]} ${calMonth.getFullYear()}`;
-    const first = calMonth, startOffset = (first.getDay() + 6) % 7;
-    const gridStart = addDays(first, -startOffset), gridEnd = addDays(gridStart, 41);
-    const seq = ++calSeq;
-    const events = await getJSON(`/api/items?start=${iso(gridStart)}&end=${iso(gridEnd)}&undated=false`);
-    if (seq !== calSeq) return;
-    const byDay = {};
-    for (const e of events) (byDay[e.date] ||= []).push(e);
-
-    const grid = $("calGrid");
-    grid.replaceChildren();
-    ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].forEach((d) => grid.appendChild(el("div", "dow", d)));
-    for (let i = 0; i < 42; i++) {
-      const d = addDays(gridStart, i), s = iso(d), list = byDay[s] || [];
-      const cell = el("button", "cal-cell");
-      if (d.getMonth() !== calMonth.getMonth()) cell.classList.add("out");
-      if (s === todayIso()) cell.classList.add("today");
-      if (s === calSel) cell.classList.add("sel");
-      if (list.length) cell.classList.add("has");
-      cell.append(el("span", "num", String(d.getDate())));
-      list.slice(0, 3).forEach((e) => cell.append(el("span", `ev ${e.type}${e.done ? " done" : ""}`, `${e.time ? e.time + " " : ""}${e.title}`)));
-      if (list.length > 3) cell.append(el("span", "more", `ещё ${list.length - 3}`));
-      cell.setAttribute("aria-label", `${dayLabel(s, true)}: ${list.length} ${plural(list.length, "запись", "записи", "записей")}`);
-      cell.onclick = () => { calSel = s; renderCalendar(); };
-      grid.appendChild(cell);
-    }
+  let calendar = null, calSel = null;
+  const calEvents = new Map();                   // id события календаря → запись
+  function calendarView() { return window.innerWidth < 640 ? "listMonth" : "dayGridMonth"; }
+  function initCalendar() {
+    calendar = new FullCalendar.Calendar($("fc"), {
+      locale: "ru", firstDay: 1, initialView: calendarView(), initialDate: calSel, height: "auto", dayMaxEvents: 3, nowIndicator: true,
+      headerToolbar: { left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek,listMonth" },
+      buttonText: { today: "Сегодня", month: "Месяц", week: "Неделя", list: "Список" },
+      moreLinkText: (n) => `ещё ${n}`,
+      noEventsText: "В этом месяце записей нет",
+      eventTimeFormat: { hour: "2-digit", minute: "2-digit", hour12: false },
+      slotLabelFormat: { hour: "2-digit", minute: "2-digit", hour12: false },
+      allDayText: "Весь день",
+      events: async (info, ok, fail) => {
+        try {
+          // напоминания приходят сами, в календаре только задачи и встречи
+          const items = await getJSON(`/api/items?start=${iso(info.start)}&end=${iso(addDays(info.end, -1))}&undated=false&types=task,meeting`);
+          calEvents.clear();
+          ok(items.map((e, k) => {
+            const id = `${e.id}-${e.date}-${k}`;
+            calEvents.set(id, e);
+            const start = e.time ? `${e.date}T${e.time}` : e.date;
+            const ev = { id, title: e.title, start, allDay: !e.time, classNames: [`fc-${e.type}`].concat(e.done ? ["fc-done"] : []) };
+            if (e.type === "meeting" && e.time) ev.end = new Date(new Date(start).getTime() + (e.duration_min || 60) * 6e4);
+            return ev;
+          }));
+          showCalDay();
+        } catch (err) { fail(err); }
+      },
+      dateClick: (info) => { calSel = info.dateStr.slice(0, 10); highlightCalDay(); showCalDay(); },
+      eventClick: (info) => { const e = calEvents.get(info.event.id); if (e) { calSel = e.date; highlightCalDay(); showCalDay(); } },
+      datesSet: () => highlightCalDay(),
+      windowResize: () => { if (window.innerWidth < 640 && calendar.view.type === "dayGridMonth") calendar.changeView("listMonth"); },
+    });
+    calendar.render();
+  }
+  function highlightCalDay() {
+    document.querySelectorAll("#fc .fc-daygrid-day").forEach((c) => c.classList.toggle("is-selected", c.dataset.date === calSel));
+  }
+  function showCalDay() {
     $("calDayTitle").textContent = dayLabel(calSel, true);
     const dayList = $("calDayList");
     dayList.replaceChildren();
-    const sel = byDay[calSel] || [];
+    const sel = [...calEvents.values()].filter((e) => e.date === calSel);
     if (!sel.length) dayList.append(emptyEl("В этот день ничего нет."));
     sel.forEach((e) => dayList.appendChild(rowEl(e)));
   }
-  $("calPrev").onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() - 1, 1); renderCalendar(); };
-  $("calNext").onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCalendar(); };
-  $("calToday").onclick = () => { calMonth = null; calSel = null; renderCalendar(); };
+  async function renderCalendar() {
+    calSel = calSel || todayIso();
+    if (!window.FullCalendar) { $("fc").replaceChildren(emptyEl("Не удалось загрузить календарь — обновите страницу.")); return; }
+    if (!calendar) initCalendar();
+    else { calendar.updateSize(); calendar.refetchEvents(); }
+    highlightCalDay();
+  }
 
   //история
   async function renderHistory() {
@@ -533,7 +632,7 @@
         b.onclick = () => {
           results.hidden = true;
           searchBox.value = "";
-          if (e.date) { calSel = e.date; const d = parse(e.date); calMonth = new Date(d.getFullYear(), d.getMonth(), 1); go("#/calendar"); }
+          if (e.date) { calSel = e.date; if (calendar) calendar.gotoDate(e.date); go("#/calendar"); }
           else go("#/tasks?preset=undated");
         };
         results.appendChild(b);
@@ -675,7 +774,8 @@
     closeMenus();
     const [path, query] = (location.hash.replace(/^#/, "") || "/").split("?");
     const params = new URLSearchParams(query || "");
-    const view = { "/": "home", "/tasks": "tasks", "/calendar": "calendar", "/meetings": "meetings", "/reminders": "reminders", "/history": "history" }[path] || "home";
+    const view = { "/": "home", "/tasks": "tasks", "/calendar": "calendar", "/meetings": "meetings", "/reminders": "reminders",
+      "/done": "done", "/history": "history" }[path] || "home";
     document.querySelectorAll(".nav a").forEach((a) => a.classList.toggle("active", a.dataset.view === view));
     $("view-home").hidden = view !== "home";
     $("view-list").hidden = !LISTS[view];
@@ -697,7 +797,7 @@
     const [path] = (location.hash.replace(/^#/, "") || "/").split("?");
     try {
       if (path === "/" || !path) await renderHome();
-      else if (["/tasks", "/meetings", "/reminders"].includes(path)) await renderList();
+      else if (["/tasks", "/meetings", "/reminders", "/done"].includes(path)) await renderList();
       else if (path === "/calendar") await renderCalendar();
       else if (path === "/history") await renderHistory();
       await renderBell();

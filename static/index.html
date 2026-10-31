@@ -7,7 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=29">
+  <link rel="stylesheet" href="/static/vendor/flatpickr.min.css">
+  <link rel="stylesheet" href="/static/style.css?v=37">
 </head>
 <body>
   <div class="app">
@@ -18,12 +19,13 @@
         <b>Ассистент<br>задач и встреч</b>
       </a>
       <nav class="nav" aria-label="Разделы">
-        <a href="#/" data-view="home"><svg class="icon"><use href="/static/icons.svg#home"/></svg>Главная</a>
-        <a href="#/tasks" data-view="tasks"><svg class="icon"><use href="/static/icons.svg#tasks"/></svg>Мои задачи</a>
-        <a href="#/calendar" data-view="calendar"><svg class="icon"><use href="/static/icons.svg#calendar"/></svg>Календарь</a>
-        <a href="#/meetings" data-view="meetings"><svg class="icon"><use href="/static/icons.svg#users"/></svg>Встречи</a>
-        <a href="#/reminders" data-view="reminders"><svg class="icon"><use href="/static/icons.svg#bell"/></svg>Напоминания<span class="badge" id="remindBadge" hidden></span></a>
-        <a href="#/history" data-view="history"><svg class="icon"><use href="/static/icons.svg#clock"/></svg>История</a>
+        <a href="#/" data-view="home"><svg class="icon"><use href="/static/icons.svg#home"/></svg><span class="lbl">Главная</span><span class="short">Главная</span></a>
+        <a href="#/tasks" data-view="tasks"><svg class="icon"><use href="/static/icons.svg#tasks"/></svg><span class="lbl">Мои задачи</span><span class="short">Задачи</span></a>
+        <a href="#/calendar" data-view="calendar"><svg class="icon"><use href="/static/icons.svg#calendar"/></svg><span class="lbl">Календарь</span><span class="short">Календарь</span></a>
+        <a href="#/meetings" data-view="meetings"><svg class="icon"><use href="/static/icons.svg#users"/></svg><span class="lbl">Встречи</span><span class="short">Встречи</span></a>
+        <a href="#/reminders" data-view="reminders"><svg class="icon"><use href="/static/icons.svg#bell"/></svg><span class="lbl">Напоминания</span><span class="short">Напомин.</span><span class="badge" id="remindBadge" hidden></span></a>
+        <a href="#/done" data-view="done"><svg class="icon"><use href="/static/icons.svg#check"/></svg><span class="lbl">Выполненные</span><span class="short">Готово</span></a>
+        <a href="#/history" data-view="history"><svg class="icon"><use href="/static/icons.svg#clock"/></svg><span class="lbl">История</span><span class="short">История</span></a>
       </nav>
       <div class="promo"><img class="blend" src="/static/img/promo.webp" alt="Планируй легче с голосовым ассистентом" width="190" height="288"></div>
       <div class="profile">
@@ -59,7 +61,7 @@
                 <h1>Твой день.<br><span class="mark">Под твоим контролем.</span></h1>
                 <p>Создавай задачи, встречи и напоминания голосом или текстом. Я помогу всё организовать.</p>
               </div>
-              <img class="hero-art blend" src="/static/img/hero.webp" alt="" width="640" height="566">
+              <img class="hero-art blend" src="/static/img/hero.webp" alt="" width="1154" height="1060">
             </div>
 
             <div class="card assistant">
@@ -126,7 +128,7 @@
             </div>
 
             <div class="card features">
-              <div class="card-head" style="margin-bottom:4px"><h2>Полезные возможности</h2></div>
+              <div class="card-head"><h2>Полезные возможности</h2></div>
               <button class="feature" data-feature="voice">
                 <span class="ico"><svg class="icon"><use href="/static/icons.svg#mic"/></svg></span>
                 <span><b>Управление голосом</b><small>Создавай, редактируй, удаляй задачи</small></span>
@@ -154,8 +156,8 @@
         <div class="card filters">
           <div class="seg" id="presets"></div>
           <div class="range">
-            <span>с</span><input type="date" id="from" aria-label="Начало периода">
-            <span>по</span><input type="date" id="to" aria-label="Конец периода">
+            <span>с</span><input id="from" placeholder="Начало" aria-label="Начало периода" readonly>
+            <span>по</span><input id="to" placeholder="Конец" aria-label="Конец периода" readonly>
           </div>
           <select id="typeFilter" aria-label="Тип записей">
             <option value="">Все типы</option>
@@ -177,16 +179,10 @@
 
       <!-- Календарь -->
       <section class="view" id="view-calendar" hidden>
-        <div class="page-head"><div><h1>Календарь</h1><p>Выберите день, чтобы увидеть его события</p></div></div>
+        <div class="page-head"><div><h1>Календарь</h1><p>Выберите день или событие, чтобы увидеть подробности</p></div></div>
         <div class="cal-wrap">
           <div class="card cal">
-            <div class="cal-head">
-              <h2 id="calTitle"></h2>
-              <button class="btn" id="calToday">Сегодня</button>
-              <button class="round-btn" id="calPrev" aria-label="Предыдущий месяц"><svg class="icon"><use href="/static/icons.svg#chevron-left"/></svg></button>
-              <button class="round-btn" id="calNext" aria-label="Следующий месяц"><svg class="icon"><use href="/static/icons.svg#chevron-right"/></svg></button>
-            </div>
-            <div class="cal-grid" id="calGrid"></div>
+            <div id="fc"></div>
           </div>
           <div class="card panel">
             <div class="card-head"><h2 id="calDayTitle">День</h2></div>
@@ -203,6 +199,10 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=29"></script>
+  <script src="/static/vendor/fullcalendar.min.js"></script>
+  <script src="/static/vendor/fullcalendar-ru.js"></script>
+  <script src="/static/vendor/flatpickr.min.js"></script>
+  <script src="/static/vendor/flatpickr-ru.js"></script>
+  <script src="/static/app.js?v=37"></script>
 </body>
 </html>
