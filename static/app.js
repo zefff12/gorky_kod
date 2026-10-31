@@ -567,7 +567,8 @@
       allDayText: "Весь день",
       events: async (info, ok, fail) => {
         try {
-          const items = await getJSON(`/api/items?start=${iso(info.start)}&end=${iso(addDays(info.end, -1))}&undated=false`);
+          // напоминания приходят сами, в календаре только задачи и встречи
+          const items = await getJSON(`/api/items?start=${iso(info.start)}&end=${iso(addDays(info.end, -1))}&undated=false&types=task,meeting`);
           calEvents.clear();
           ok(items.map((e, k) => {
             const id = `${e.id}-${e.date}-${k}`;
