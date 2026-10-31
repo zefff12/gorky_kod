@@ -49,6 +49,7 @@ class Event:
     created_at: datetime | None = None
     source_text: str | None = None
     priority: str | None = None         # high | medium | low | None
+    also_remind: bool = False           # «…и напоминай мне об этом»: к записи создаётся напоминание
 
     @property
     def start(self) -> datetime | None:

@@ -271,7 +271,7 @@ class Assistant:
         draft = Event(
             id=None, user_id=user_id, type=etype, title=cmd.title or "", date=cmd.date, time=cmd.time,
             recurrence=cmd.recurrence, duration_min=cmd.extras.get("duration_min") or 60,
-            priority=cmd.extras.get("priority"),
+            priority=cmd.extras.get("priority"), also_remind=bool(cmd.extras.get("also_remind")),
         )
         if not draft.title:
             s.pending = Pending("need_title", draft=draft, deadline=cmd.has_deadline)
@@ -348,7 +348,17 @@ class Assistant:
             text = text.rstrip(".") + f", приоритет {PRIORITY_NAMES[saved.priority]}."
         if saved.start and saved.time and saved.start < now and not saved.recurrence:
             text += " Обратите внимание: это время уже прошло."
-        return Reply(text, events=[saved], intent="create")
+        events = [saved]
+        if draft.also_remind and saved.type is not EventType.REMINDER:
+            if saved.time:
+                reminder = self.storage.add(Event(
+                    id=None, user_id=user_id, type=EventType.REMINDER, title=saved.title, date=saved.date,
+                    time=saved.time, recurrence=saved.recurrence, priority=saved.priority, created_at=now))
+                events.append(reminder)
+                text += " Напомню об этом" + (" каждый раз." if saved.recurrence else ".")
+            else:
+                text += " Чтобы я напомнил, скажите время — например, «напомни в 9 утра»."
+        return Reply(text, events=events, intent="create")
 
     # ------------------------------------------------------------------ list
 

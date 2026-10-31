@@ -156,16 +156,17 @@ def extract(tokens: list[Token], now: datetime, prefer_past: bool = False, futur
         prev = n[i - 1] if i > 0 else ""
 
         # --- повторы: «каждый день», «по понедельникам», «ежедневно», «по будням»
-        if w in ("ежедневно",) or (w in EVERY_WORDS and nxt in ("день", "утро", "вечер")):
+        # «ежедневно», а также «ежедневную задачу», «ежедневное напоминание»
+        if w.startswith("ежедневн") or (w in EVERY_WORDS and nxt in ("день", "утро", "вечер")):
             info.recurrence = Recurrence.DAILY
             info.date = info.date or today
-            _consume(tokens, i, i + (1 if w == "ежедневно" else 2))
+            _consume(tokens, i, i + (1 if w.startswith("ежедневн") else 2))
             i += 1
             continue
-        if w == "еженедельно" or (w in EVERY_WORDS and nxt in WEEK_WORDS):
+        if w.startswith("еженедельн") or (w in EVERY_WORDS and nxt in WEEK_WORDS):
             info.recurrence = Recurrence.WEEKLY
             info.date = info.date or today
-            _consume(tokens, i, i + (1 if w == "еженедельно" else 2))
+            _consume(tokens, i, i + (1 if w.startswith("еженедельн") else 2))
             i += 1
             continue
         if (w == "по" and nxt in ("будням", "рабочим")) or (w in EVERY_WORDS and nxt in ("будний", "рабочий")):

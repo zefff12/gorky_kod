@@ -89,6 +89,30 @@ def _to_nominative(word: str) -> str:
     return word
 
 
+def _phrase_to_nominative(toks: list[Token], case: str = "accs") -> list[Token]:
+    """«прогулку с собакой» → «прогулка с собакой», «вечернюю пробежку» → «вечерняя пробежка»:
+    начало названия после «задачу на …» стоит в винительном падеже (после «напомни о …» —
+    в предложном) — ставим его в именительный: прилагательные до первого существительного
+    и само существительное."""
+    out = list(toks)
+    for k, t in enumerate(out):
+        word = t.orig
+        best = next((p for p in _morph.parse(word) if case in p.tag and ({"NOUN", "ADJF"} & set(p.tag.grammemes))), None)
+        if best is None:
+            break
+        nom = best.inflect({"nomn"} | ({"sing"} if "sing" in best.tag else {"plur"}))
+        if nom:
+            w = nom.word
+            out[k] = Token(w.capitalize() if word[:1].isupper() else w, t.norm, t.used)
+        if "NOUN" in best.tag:
+            break
+    return out
+
+
+TYPE_WORD_FORMS = {"задачу", "задача", "задачку", "напоминание", "встречу", "встреча", "запись",
+                   "напомни", "напомните", "напомнить"}
+
+
 def build_title(tokens: list[Token]) -> str | None:
     """Название = остаток фразы без даты, триггеров и вводных слов."""
     toks = [t for t in tokens if not t.used]
@@ -99,13 +123,27 @@ def build_title(tokens: list[Token]) -> str | None:
             del toks[k:k + 2]
         else:
             k += 1
-    while toks and (toks[0].norm in LEADING_FILLER or not toks[0].norm[0].isalnum()):
+    # «задачу на прогулку с собакой», «напоминание про оплату» — предлог после слова-типа
+    # относится к нему, а дальше название стоит в косвенном падеже
+    stripped_type = False
+    after_prep = None
+    while toks and (toks[0].norm in LEADING_FILLER or not toks[0].norm[0].isalnum()
+                    or (stripped_type and toks[0].norm in ("на", "про", "по", "о", "об"))):
+        if stripped_type and toks[0].norm in ("на", "про", "по", "о", "об") and len(toks) > 1:
+            after_prep = "loct" if toks.pop(0).norm in ("о", "об") else "accs"
+            break
+        stripped_type = stripped_type or toks[0].norm in TYPE_WORD_FORMS
+        toks.pop(0)
+    while toks and toks[0].norm in LEADING_FILLER:
         toks.pop(0)
     while toks and (toks[-1].norm in TRAILING_FILLER or not toks[-1].norm[-1].isalnum()):
         toks.pop()
     if not toks:
         return None
-    toks[0] = Token(_to_nominative(toks[0].orig), toks[0].norm)
+    if after_prep:
+        toks = _phrase_to_nominative(toks, after_prep)
+    else:
+        toks[0] = Token(_to_nominative(toks[0].orig), toks[0].norm)
     title = join_tokens(toks)
     return title[:1].upper() + title[1:] if title else None
 
@@ -241,6 +279,24 @@ def extract_priority(tokens: list[Token]) -> str | None:
 
 
 FOLLOW_UP_STARTS = {"а", "и", "ну", "тогда", "также", "ещё", "еще"}
+REMIND_TAIL = {"мне", "нам", "об", "о", "про", "этом", "это", "ней", "нём", "нем", "ним", "них", "пожалуйста", "заранее",
+               "тоже", "также"}
+
+
+def extract_also_remind(tokens: list[Token]) -> bool:
+    """«… и напоминай мне об этом» в конце команды: просьба напомнить о создаваемой записи,
+    а не часть её названия."""
+    for i, t in enumerate(tokens):
+        if t.used or i == 0 or not t.norm.startswith("напомин") and not t.norm.startswith("напомни"):
+            continue
+        if tokens[i - 1].norm not in ("и", "а", ","):
+            continue
+        rest = [x for x in tokens[i + 1:] if x.norm[:1].isalnum()]
+        if all(x.used or x.norm in REMIND_TAIL for x in rest):
+            for x in tokens[i - 1:]:
+                x.used = True
+            return True
+    return False
 
 
 def parse(text: str, now: datetime, context=None) -> ParsedCommand:
@@ -284,6 +340,9 @@ def parse(text: str, now: datetime, context=None) -> ParsedCommand:
         cmd.extras["duration_min"] = info.duration_min
 
     if intent is Intent.CREATE:
+        if extract_also_remind(tokens):
+            cmd.extras["also_remind"] = True
+            lemset = {lemma(t.orig) for t in tokens if not t.used} | (lemset & (TASK_LEMMAS | MEETING_LEMMAS))
         priority = extract_priority(tokens)
         if priority:
             cmd.extras["priority"] = priority
