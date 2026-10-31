@@ -28,7 +28,9 @@ CREATE TABLE IF NOT EXISTS events (
     recurrence   TEXT,                -- daily | weekly | weekdays | NULL
     created_at   TEXT    NOT NULL,
     source_text  TEXT,                -- исходная фраза пользователя / строка CSV
-    priority     TEXT                 -- high | medium | low | NULL
+    priority     TEXT,                -- high | medium | low | NULL
+    done_dates   TEXT,                -- JSON: дни повторяющейся записи, отмеченные выполненными
+    skip_dates   TEXT                 -- JSON: дни, удалённые из серии
 );
 CREATE INDEX IF NOT EXISTS idx_events_user_date ON events (user_id, date);
 
@@ -82,7 +84,17 @@ def _row_to_event(row: sqlite3.Row) -> Event:
         priority=row["priority"],
         created_at=datetime.fromisoformat(row["created_at"]),
         source_text=row["source_text"],
+        done_dates=_load_dates(row["done_dates"]),
+        skip_dates=_load_dates(row["skip_dates"]),
     )
+
+
+def _load_dates(raw: str | None) -> set[date]:
+    return {date.fromisoformat(d) for d in json.loads(raw)} if raw else set()
+
+
+def _dump_dates(days: set[date]) -> str | None:
+    return json.dumps(sorted(d.isoformat() for d in days)) if days else None
 
 
 def _occurs_on(ev: Event, day: date) -> bool:
@@ -111,6 +123,10 @@ class Storage:
             columns = {r["name"] for r in c.execute("PRAGMA table_info(events)")}
             if "priority" not in columns:
                 c.execute("ALTER TABLE events ADD COLUMN priority TEXT")
+            # ...и до отметок по отдельным дням повторяющихся записей
+            for column in ("done_dates", "skip_dates"):
+                if column not in columns:
+                    c.execute(f"ALTER TABLE events ADD COLUMN {column} TEXT")
 
     @contextmanager
     def _conn(self) -> Iterator[sqlite3.Connection]:
@@ -129,8 +145,8 @@ class Storage:
         created = ev.created_at or datetime.now().replace(microsecond=0)
         with self._conn() as c:
             cur = c.execute(
-                "INSERT INTO events (user_id, type, title, date, time, duration_min, done, recurrence, created_at, source_text, priority)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO events (user_id, type, title, date, time, duration_min, done, recurrence, created_at, source_text,"
+                " priority, done_dates, skip_dates) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     ev.user_id, ev.type.value, ev.title,
                     ev.date.isoformat() if ev.date else None,
@@ -138,6 +154,7 @@ class Storage:
                     ev.duration_min, int(ev.done),
                     ev.recurrence.value if ev.recurrence else None,
                     created.isoformat(timespec="seconds"), ev.source_text, ev.priority,
+                    _dump_dates(ev.done_dates), _dump_dates(ev.skip_dates),
                 ),
             )
         return replace(ev, id=cur.lastrowid, created_at=created)
@@ -169,14 +186,14 @@ class Storage:
         with self._conn() as c:
             c.execute(
                 "UPDATE events SET type = ?, title = ?, date = ?, time = ?, duration_min = ?, done = ?, recurrence = ?,"
-                " priority = ? WHERE id = ? AND user_id = ?",
+                " priority = ?, done_dates = ?, skip_dates = ? WHERE id = ? AND user_id = ?",
                 (
                     ev.type.value, ev.title,
                     ev.date.isoformat() if ev.date else None,
                     ev.time.strftime("%H:%M") if ev.time else None,
                     ev.duration_min, int(ev.done),
                     ev.recurrence.value if ev.recurrence else None,
-                    ev.priority, ev.id, ev.user_id,
+                    ev.priority, _dump_dates(ev.done_dates), _dump_dates(ev.skip_dates), ev.id, ev.user_id,
                 ),
             )
 
@@ -227,12 +244,35 @@ class Storage:
                 continue
             day = max(start, ev.date)
             while day <= end:
-                if _occurs_on(ev, day):
-                    result.append(replace(ev, date=day))
+                if _occurs_on(ev, day) and day not in ev.skip_dates:
+                    # каждый день серии выполняется отдельно
+                    result.append(replace(ev, date=day, done=ev.done or day in ev.done_dates, occurrence=True))
                 day += timedelta(days=1)
         # записи без даты — в конце списка
         result.sort(key=lambda e: (e.date is None, e.date or date.max, e.time or time(0, 0), e.id))
         return result
+
+    def occurs_on(self, ev: Event, day: date) -> bool:
+        return _occurs_on(ev, day) and day not in ev.skip_dates
+
+    def set_occurrence_done(self, user_id: str, event_id: int, day: date, done: bool) -> Event | None:
+        """Отметить выполненным один день повторяющейся записи, не трогая остальные."""
+        ev = self.get(user_id, event_id)
+        if ev is None:
+            return None
+        (ev.done_dates.add if done else ev.done_dates.discard)(day)
+        self.update(ev)
+        return replace(ev, date=day, done=ev.done or day in ev.done_dates, occurrence=True)
+
+    def skip_occurrence(self, user_id: str, event_id: int, day: date) -> bool:
+        """Убрать из серии один день; остальные повторы остаются."""
+        ev = self.get(user_id, event_id)
+        if ev is None:
+            return False
+        ev.skip_dates.add(day)
+        ev.done_dates.discard(day)
+        self.update(ev)
+        return True
 
     def find_same(self, user_id: str, ev: Event) -> Event | None:
         """Уже существующая запись того же типа с тем же названием, датой и временем."""
@@ -276,7 +316,9 @@ class Storage:
 
     def export_user(self, user_id: str) -> dict:
         return {
-            "events": [e.to_dict() | {"source_text": e.source_text} for e in self.all(user_id)],
+            "events": [e.to_dict() | {"source_text": e.source_text, "done_dates": sorted(d.isoformat() for d in e.done_dates),
+                                      "skip_dates": sorted(d.isoformat() for d in e.skip_dates)}
+                       for e in self.all(user_id)],
             "messages": self.messages(user_id, limit=200),
             "dialog": self.load_dialog(user_id),
         }
@@ -296,6 +338,8 @@ class Storage:
                 created_at=datetime.fromisoformat(raw["created_at"]) if raw.get("created_at") else None,
                 source_text=raw.get("source_text"),
                 priority=raw.get("priority") if raw.get("priority") in ("high", "medium", "low") else None,
+                done_dates={date.fromisoformat(d) for d in raw.get("done_dates") or []},
+                skip_dates={date.fromisoformat(d) for d in raw.get("skip_dates") or []},
             )
             saved = self.add(ev)
             if raw.get("id") is not None:
@@ -328,6 +372,10 @@ class Storage:
             events = self.all(user_id)
             if not undated:
                 events = [e for e in events if e.date is not None]
+            if status == "done":
+                # выполненные дни повторяющихся записей — отдельными строками
+                events += [replace(e, date=d, done=True, occurrence=True)
+                           for e in events if e.recurrence and not e.done for d in sorted(e.done_dates - e.skip_dates)]
         if types:
             events = [e for e in events if e.type in types]
         today = today or date.today()

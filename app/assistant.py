@@ -165,6 +165,14 @@ class Assistant:
 
     def _continue_pending(self, user_id: str, s: Session, text: str, rule_cmd: ParsedCommand, now: datetime) -> Reply | None:
         p = s.pending
+        if p.kind == "confirm_delete" and p.draft.recurrence and not (p.cmd and p.cmd.date):
+            # «нет, только 4 ноября», «только завтра» — удаляем один день серии, а не всю серию
+            tokens = tokenize(text)
+            info = dates.extract(tokens, now, future_bias=True)
+            rest = {t.norm for t in tokens if not t.used and t.norm[:1].isalnum()}
+            if info.date and rest <= ONLY_DAY_WORDS:
+                s.pending = None
+                return self._skip_day(user_id, s, p.draft, info.date, now)
         if rule_cmd.intent is Intent.REJECT:
             s.pending = None
             return Reply("Хорошо, отменил.", intent="reject")
@@ -238,6 +246,8 @@ class Assistant:
                 s.pending = None
                 if p.kind == "confirm_conflict":
                     return self._save(user_id, s, p.draft, now)
+                if p.cmd and p.cmd.date and p.draft.recurrence:
+                    return self._skip_day(user_id, s, p.draft, p.cmd.date, now)
                 self.storage.delete(user_id, p.draft.id)
                 s.forget(p.draft.id)
                 return Reply(f"Удалил {TYPE_ACC[p.draft.type]} «{p.draft.title}».", intent="delete")
@@ -515,6 +525,14 @@ class Assistant:
     def _do_action(self, user_id: str, s: Session, action: str, target: Event, cmd: ParsedCommand | None, now: datetime) -> Reply:
         today = now.date()
         if action == "complete":
+            if target.recurrence:
+                # у повторяющейся записи выполняется один день — названный или сегодняшний
+                day = _single_day(cmd) or today
+                if not self.storage.occurs_on(target, day):
+                    return Reply(f"«{target.title}» не повторяется {human_date(day, today)}.", events=[target], intent="complete")
+                done = self.storage.set_occurrence_done(user_id, target.id, day, True)
+                return Reply(f"Отметил «{target.title}» выполненной {human_date(day, today)}. В другие дни она остаётся в работе.",
+                             events=[done], intent="complete")
             target.done = True
             self.storage.update(target)
             return Reply(f"Отметил выполненной: {describe(target, today)}.", events=[target], intent="complete")
@@ -524,13 +542,33 @@ class Assistant:
                 return Reply(f"Как назвать {TYPE_ACC[target.type]} «{target.title}»?", awaiting="need_new_title", intent="rename")
             return self._apply_rename(user_id, s, target, cmd.title)
         if action == "delete":
+            day = _single_day(cmd)
+            if target.recurrence and day:
+                # «удали 4 ноября прогулку с собакой» — только этот день серии
+                if not self.storage.occurs_on(target, day):
+                    return Reply(f"«{target.title}» не повторяется {human_date(day, today)}.", events=[target], intent="delete")
+                s.pending = Pending("confirm_delete", draft=target, cmd=ParsedCommand(intent=Intent.DELETE, date=day))
+                return Reply(f"Удалить «{target.title}» только {human_date(day, today)}? В остальные дни она останется.",
+                             events=[target], awaiting="confirm_delete", intent="delete")
             s.pending = Pending("confirm_delete", draft=target)
+            if target.recurrence:
+                return Reply(f"Удалить {TYPE_ACC[target.type]} «{target.title}» ({human_when(target, today)}) со всеми повторами? "
+                             "Если нужно убрать только один день, назовите дату.",
+                             events=[target], awaiting="confirm_delete", intent="delete")
             return Reply(f"Удалить {TYPE_ACC[target.type]} «{target.title}» ({human_when(target, today)})?", events=[target], awaiting="confirm_delete", intent="delete")
         new_date, new_time = (cmd.date, cmd.time) if cmd else (None, None)
         if new_date is None and new_time is None:
             s.pending = Pending("need_new_time", draft=target)
             return Reply(f"На когда перенести {TYPE_ACC[target.type]} «{target.title}»?", awaiting="need_new_time", intent="reschedule")
         return self._apply_reschedule(user_id, s, target, new_date, new_time, now)
+
+    def _skip_day(self, user_id: str, s: Session, target: Event, day: date, now: datetime) -> Reply:
+        today = now.date()
+        if not self.storage.occurs_on(target, day):
+            return Reply(f"«{target.title}» не повторяется {human_date(day, today)} — удалять нечего.", events=[target], intent="delete")
+        self.storage.skip_occurrence(user_id, target.id, day)
+        s.remember([target.id])
+        return Reply(f"Удалил «{target.title}» {human_date(day, today)}. В остальные дни она осталась.", events=[target], intent="delete")
 
     def _apply_rename(self, user_id: str, s: Session, target: Event, new_title: str) -> Reply:
         stored = self.storage.get(user_id, target.id) or target
@@ -558,6 +596,22 @@ class Assistant:
 
 GREETINGS = {"привет", "здравствуй", "здравствуйте", "добрый день", "доброе утро", "добрый вечер", "хай", "алло"}
 THANKS = {"спасибо", "благодарю", "спс", "отлично", "супер", "класс"}
+
+
+# ответ на «удалить со всеми повторами?»: «нет, только 4 ноября», «удали только завтра»
+ONLY_DAY_WORDS = {"нет", "да", "не", "только", "лишь", "а", "удали", "удалить", "убери", "этот", "это", "один", "день",
+                  "на", "в", "эту", "её", "ее", "все", "всё", "пожалуйста", "оставь", "остальные"}
+
+
+def _single_day(cmd: ParsedCommand | None) -> date | None:
+    """Один конкретный день из команды: «4 ноября», «завтра» (но не «на этой неделе»)."""
+    if cmd is None:
+        return None
+    if cmd.date:
+        return cmd.date
+    if cmd.period and cmd.period.start == cmd.period.end:
+        return cmd.period.start
+    return None
 
 
 def _small_talk(text: str) -> str | None:

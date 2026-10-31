@@ -225,27 +225,44 @@ def quick_search(q: str = Query(..., min_length=1, max_length=200), uid: str = D
 class EventPatch(BaseModel):
     done: bool | None = None
     priority: str | None = Field(None, pattern="^(high|medium|low|none)$")
+    day: date | None = Field(None, alias="date", description="день повторяющейся записи, к которому относится отметка")
 
 
 @app.patch("/api/events/{event_id}")
 def update_event(event_id: int, body: EventPatch, uid: str = Depends(current_user)):
-    """Отметить запись выполненной или сменить приоритет кнопкой в интерфейсе."""
+    """Отметить запись выполненной или сменить приоритет кнопкой в интерфейсе.
+
+    У повторяющейся записи выполненным отмечается один день (date, по умолчанию сегодня),
+    остальные повторы остаются в работе."""
     ev = storage.get(uid, event_id)
     if ev is None:
         raise HTTPException(404, "Запись не найдена")
-    if body.done is not None:
-        ev.done = body.done
     if body.priority is not None:
         ev.priority = None if body.priority == "none" else body.priority
-    storage.update(ev)
+        storage.update(ev)
+    if body.done is not None:
+        if ev.recurrence:
+            day = body.day or config.now().date()
+            if not storage.occurs_on(ev, day):
+                raise HTTPException(400, "В этот день запись не повторяется")
+            return storage.set_occurrence_done(uid, event_id, day, body.done).to_dict()
+        ev.done = body.done
+        storage.update(ev)
     return ev.to_dict()
 
 
 @app.delete("/api/events/{event_id}")
-def delete_event(event_id: int, uid: str = Depends(current_user)):
-    """Удалить одну запись кнопкой в интерфейсе."""
-    if not storage.delete(uid, event_id):
+def delete_event(event_id: int, day: date | None = Query(None, alias="date",
+                 description="удалить только этот день повторяющейся записи"),
+                 uid: str = Depends(current_user)):
+    """Удалить запись кнопкой в интерфейсе; у повторяющейся — всю серию или один день."""
+    ev = storage.get(uid, event_id)
+    if ev is None:
         raise HTTPException(404, "Запись не найдена")
+    if day is not None and ev.recurrence:
+        storage.skip_occurrence(uid, event_id, day)
+        return {"ok": True, "skipped": day.isoformat()}
+    storage.delete(uid, event_id)
     assistant.forget_event(uid, event_id)
     return {"ok": True}
 

@@ -95,16 +95,21 @@
   });
 
   // ------------------------------------------------------------ действия с записями
+  // у повторяющейся записи отметка и удаление относятся к одному дню серии
+  const occurrenceDay = (e) => (e.recurrence && e.occurrence ? e.date : null);
   async function setDone(e, done) {
-    await api(`/api/events/${e.id}`, { method: "PATCH", body: JSON.stringify({ done }) });
-    toast(done ? `«${e.title}» — в разделе «Выполненные»` : `«${e.title}» снова в работе`);
+    const day = occurrenceDay(e);
+    const r = await api(`/api/events/${e.id}`, { method: "PATCH", body: JSON.stringify(day ? { done, date: day } : { done }) });
+    const when = e.recurrence ? ` (${dayLabel(day || todayIso()).toLowerCase()})` : "";
+    if (r.ok) toast(done ? `«${e.title}»${when} — в разделе «Выполненные»` : `«${e.title}»${when} снова в работе`);
     await refresh();
   }
-  async function removeEvent(e) {
-    const extra = e.recurrence ? " Это повторяющаяся запись — удалятся все повторы." : "";
-    if (!confirm(`Удалить «${e.title}»?${extra}`)) return;
-    const r = await api(`/api/events/${e.id}`, { method: "DELETE" });
-    if (r.ok) toast(`Удалил «${e.title}»`);
+  async function removeEvent(e, onlyDay = null) {
+    const question = onlyDay ? `Удалить «${e.title}» только ${dayLabel(onlyDay, true).toLowerCase()}? В остальные дни запись останется.`
+      : e.recurrence ? `Удалить «${e.title}» со всеми повторами?` : `Удалить «${e.title}»?`;
+    if (!confirm(question)) return;
+    const r = await api(`/api/events/${e.id}${onlyDay ? `?date=${onlyDay}` : ""}`, { method: "DELETE" });
+    if (r.ok) toast(onlyDay ? `Убрал «${e.title}» на ${dayLabel(onlyDay).toLowerCase()}` : `Удалил «${e.title}»`);
     await refresh();
   }
   function moreButton(e, host) {
@@ -124,9 +129,17 @@
         const say = el("button");
         say.append(icon("mic", "icon sm"), "Перенести голосом");
         say.onclick = () => { closeMenus(); go("#/"); prefill(`Перенеси «${e.title}» на `); };
+        const dels = [];
+        if (occurrenceDay(e)) {
+          const one = el("button", "danger");
+          one.append(icon("trash", "icon sm"), "Удалить только этот день");
+          one.onclick = () => { closeMenus(); removeEvent(e, e.date); };
+          dels.push(one);
+        }
         const del = el("button", "danger");
-        del.append(icon("trash", "icon sm"), "Удалить");
+        del.append(icon("trash", "icon sm"), e.recurrence ? "Удалить все повторы" : "Удалить");
         del.onclick = () => { closeMenus(); removeEvent(e); };
+        dels.push(del);
         const prios = el("div", "note", "Приоритет");
         m.append(done, say, el("hr"), prios);
         for (const [value, name] of [["high", "Высокий"], ["medium", "Средний"], ["low", "Низкий"], ["none", "Без приоритета"]]) {
@@ -136,7 +149,7 @@
           b.onclick = () => { closeMenus(); setPriority(e, value); };
           m.append(b);
         }
-        m.append(el("hr"), del);
+        m.append(el("hr"), ...dels);
       });
     };
     host.appendChild(menu);

@@ -50,6 +50,10 @@ class Event:
     source_text: str | None = None
     priority: str | None = None         # high | medium | low | None
     also_remind: bool = False           # «…и напоминай мне об этом»: к записи создаётся напоминание
+    # повторяющиеся записи: дни, отмеченные выполненными, и дни, удалённые из серии
+    done_dates: set[date] = field(default_factory=set)
+    skip_dates: set[date] = field(default_factory=set)
+    occurrence: bool = False            # это один день серии (дата — день повтора, а не начало серии)
 
     @property
     def start(self) -> datetime | None:
@@ -68,6 +72,7 @@ class Event:
             "done": self.done,
             "recurrence": self.recurrence.value if self.recurrence else None,
             "priority": self.priority,
+            "occurrence": self.occurrence,
             "created_at": self.created_at.isoformat(timespec="seconds") if self.created_at else None,
             "category": _category(self),
         }

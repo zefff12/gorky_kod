@@ -89,15 +89,20 @@ def _to_nominative(word: str) -> str:
     return word
 
 
-def _phrase_to_nominative(toks: list[Token], case: str = "accs") -> list[Token]:
+def _phrase_to_nominative(toks: list[Token], case: str = "accs", strict: bool = False) -> list[Token]:
     """«прогулку с собакой» → «прогулка с собакой», «вечернюю пробежку» → «вечерняя пробежка»:
     начало названия после «задачу на …» стоит в винительном падеже (после «напомни о …» —
     в предложном) — ставим его в именительный: прилагательные до первого существительного
-    и само существительное."""
+    и само существительное.
+
+    strict — для дополнения после глагола («поставь поездку в Москву»): берём только самый
+    вероятный разбор слова и не трогаем одушевлённые («запиши маму к врачу»)."""
     out = list(toks)
     for k, t in enumerate(out):
         word = t.orig
-        best = next((p for p in _morph.parse(word) if case in p.tag and ({"NOUN", "ADJF"} & set(p.tag.grammemes))), None)
+        parses = _morph.parse(word)[:1] if strict else _morph.parse(word)
+        best = next((p for p in parses if case in p.tag and ({"NOUN", "ADJF"} & set(p.tag.grammemes))
+                     and not (strict and "anim" in p.tag)), None)
         if best is None:
             break
         nom = best.inflect({"nomn"} | ({"sing"} if "sing" in best.tag else {"plur"}))
@@ -111,6 +116,25 @@ def _phrase_to_nominative(toks: list[Token], case: str = "accs") -> list[Token]:
 
 TYPE_WORD_FORMS = {"задачу", "задача", "задачку", "напоминание", "встречу", "встреча", "запись",
                    "напомни", "напомните", "напомнить"}
+# глаголы, после которых название стоит в винительном падеже: «поставь поездку», «запиши стрижку»
+CREATE_VERB_FORMS = {"поставь", "поставьте", "поставить", "добавь", "добавьте", "добавить", "создай", "создайте",
+                     "создать", "запиши", "запишите", "записать", "запланируй", "запланировать", "назначь", "назначить",
+                     "внеси", "заведи", "запомни"}
+PROPER_TAGS = {"Geox", "Name", "Surn", "Patr", "Orgn"}
+
+
+def _capitalize_proper(toks: list[Token]) -> list[Token]:
+    """«в москву» → «в Москву», «с иваном» → «с Иваном»: распознавание речи пишет всё строчными.
+    Только если у слова нет обычного значения («вера», «роза» не трогаем)."""
+    out = []
+    for t in toks:
+        word = t.orig
+        if word[:1].islower():
+            nouns = [p for p in _morph.parse(word)[:4] if "NOUN" in p.tag and p.score >= 0.05]
+            if nouns and all(PROPER_TAGS & set(p.tag.grammemes) for p in nouns):
+                word = word[:1].upper() + word[1:]
+        out.append(Token(word, t.norm, t.used))
+    return out
 
 
 def build_title(tokens: list[Token]) -> str | None:
@@ -126,6 +150,7 @@ def build_title(tokens: list[Token]) -> str | None:
     # «задачу на прогулку с собакой», «напоминание про оплату» — предлог после слова-типа
     # относится к нему, а дальше название стоит в косвенном падеже
     stripped_type = False
+    stripped_verb = None
     after_prep = None
     while toks and (toks[0].norm in LEADING_FILLER or not toks[0].norm[0].isalnum()
                     or (stripped_type and toks[0].norm in ("на", "про", "по", "о", "об"))):
@@ -133,6 +158,8 @@ def build_title(tokens: list[Token]) -> str | None:
             after_prep = "loct" if toks.pop(0).norm in ("о", "об") else "accs"
             break
         stripped_type = stripped_type or toks[0].norm in TYPE_WORD_FORMS
+        if toks[0].norm in CREATE_VERB_FORMS:
+            stripped_verb = toks[0]
         toks.pop(0)
     while toks and toks[0].norm in LEADING_FILLER:
         toks.pop(0)
@@ -142,8 +169,17 @@ def build_title(tokens: list[Token]) -> str | None:
         return None
     if after_prep:
         toks = _phrase_to_nominative(toks, after_prep)
+    elif stripped_verb:
+        parses = _morph.parse(toks[0].orig)
+        if "nomn" not in parses[0].tag and any("NOUN" in p.tag and "anim" in p.tag and "accs" in p.tag for p in parses[:3]):
+            # «запиши маму к врачу» — без глагола смысл теряется: «Записать маму к врачу»
+            toks = [Token(lemma(stripped_verb.orig), stripped_verb.norm)] + toks
+        else:
+            # «поставь мне поездку в москву» → «Поездка в Москву»: дополнение глагола — в именительный
+            toks = _phrase_to_nominative(toks, "accs", strict=True)
     else:
         toks[0] = Token(_to_nominative(toks[0].orig), toks[0].norm)
+    toks = _capitalize_proper(toks)
     title = join_tokens(toks)
     return title[:1].upper() + title[1:] if title else None
 
