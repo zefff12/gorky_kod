@@ -1,4 +1,4 @@
-"""Доменные модели: запись календаря и разобранная команда пользователя."""
+"""Доменные модели"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -16,15 +16,15 @@ PRIORITIES = ("high", "medium", "low")
 
 
 class Intent(str, Enum):
-    CREATE = "create"          # создать задачу / напоминание / встречу
-    LIST = "list"              # что у меня на период
-    SEARCH = "search"          # найти старую запись
-    RESCHEDULE = "reschedule"  # перенести запись
-    COMPLETE = "complete"      # отметить выполненной
-    DELETE = "delete"          # удалить
-    RENAME = "rename"          # изменить название / текст записи
-    CONFIRM = "confirm"        # «да»
-    REJECT = "reject"          # «нет», «отмена»
+    CREATE = "create"          
+    LIST = "list"              
+    SEARCH = "search"          
+    RESCHEDULE = "reschedule"  
+    COMPLETE = "complete"      
+    DELETE = "delete"          
+    RENAME = "rename"         
+    CONFIRM = "confirm"        
+    REJECT = "reject"          
     HELP = "help"
     UNKNOWN = "unknown"
 
@@ -48,7 +48,7 @@ class Event:
     recurrence: Recurrence | None = None
     created_at: datetime | None = None
     source_text: str | None = None
-    priority: str | None = None         # high | medium | low | None
+    priority: str | None = None         
 
     @property
     def start(self) -> datetime | None:
@@ -73,31 +73,30 @@ class Event:
 
 
 def _category(ev: "Event") -> str | None:
-    from .categories import category_of      # ленивый импорт: категории зависят от NLU
+    from .categories import category_of      
     return category_of(ev)
 
 
 @dataclass
 class Period:
     start: date
-    end: date            # включительно
-    label: str           # «сегодня», «на этой неделе», ...
+    end: date          
+    label: str           
 
 
 @dataclass
 class ParsedCommand:
-    """Результат понимания запроса — одинаковый для LLM- и rule-based парсера."""
 
     intent: Intent
     event_type: EventType | None = None
     title: str | None = None
     date: date | None = None
     time: time | None = None
-    has_deadline: bool = False          # «до пятницы» — срок, а не точное время
+    has_deadline: bool = False         
     recurrence: Recurrence | None = None
-    period: Period | None = None        # для LIST и фильтра поиска
-    query: str | None = None            # для SEARCH и для выбора записи при изменении
-    tense: str | None = None            # "past" | "future" | None — для поиска
-    refers_to_last: bool = False        # «её», «эту встречу» — контекст диалога
-    source: str = "rules"               # кто разобрал: rules | llm
+    period: Period | None = None        
+    query: str | None = None           
+    tense: str | None = None            
+    refers_to_last: bool = False        
+    source: str = "rules"               
     extras: dict = field(default_factory=dict)

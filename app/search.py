@@ -1,12 +1,4 @@
-"""Гибридный поиск по старым записям.
-
-Лексический слой: леммы + синонимы + нечёткое совпадение + BM25-веса.
-Семантический слой (необязательный, app/semantic.py): эмбеддинги предложений
-добавляют записи, близкие по смыслу, но без общих слов с запросом.
-
-Почему не точное совпадение: в речи «договору», «договор» и «контракт» —
-одно и то же, а распознавание речи иногда ошибается в окончаниях и буквах.
-"""
+"""Гибридный поиск по старым записям."""
 from __future__ import annotations
 
 import math
@@ -43,7 +35,6 @@ for group in SYNONYM_GROUPS:
     for word in group:
         SYNONYMS.setdefault(word, set()).update(group - {word})
 
-# составные термины: «техническое задание» ≈ «тз», «коммерческое предложение» ≈ «кп»
 PHRASES = {("технический", "задание"): "тз", ("коммерческий", "предложение"): "кп", ("обратный", "связь"): "обратный"}
 
 STOP_LEMMAS = {"с", "по", "для", "на", "в", "к", "о", "об", "про", "и", "а", "у", "я", "мой", "это", "тот", "этот", "который",
@@ -68,7 +59,7 @@ def _terms(text: str) -> list[str]:
 
 def _doc_terms(ev: Event) -> set[str]:
     terms = set(_terms(ev.title))
-    # тип записи тоже ищется: «встреча с Иваном» найдёт «Созвон с Иваном»
+
     terms.add({EventType.MEETING: "встреча", EventType.TASK: "задача", EventType.REMINDER: "напоминание"}[ev.type])
     return terms
 
@@ -95,7 +86,6 @@ def search(
     limit: int = 10,
     embedder=None,
 ) -> list[Hit]:
-    # если тип уже фильтрует встречи, слово «встреча» в запросе ничего не добавляет
     q_terms = [t for t in _terms(query) if not (t == "встреча" and event_type is EventType.MEETING)]
     candidates = []
     for ev in events:
@@ -135,7 +125,7 @@ def search(
             elif any(_fuzzy(qt, t) for t in terms):
                 score += 0.5 * idf(qt); matched += 1
         if matched:
-            # бонус за совпадение всех слов запроса
+
             score *= 1 + 0.5 * (matched / len(q_terms) == 1)
             hits.append(Hit(ev, score))
     if hits:
@@ -145,13 +135,11 @@ def search(
     return _order(hits, today, tense)[:limit]
 
 
-SEM_ONLY_THRESHOLD = 0.5       # если слова не совпали ни с одной записью
-SEM_EXTRA_THRESHOLD = 0.7      # дополнительно к лексическим совпадениям — только очень близкие
+SEM_ONLY_THRESHOLD = 0.5       
+SEM_EXTRA_THRESHOLD = 0.7      
 
 
 def _semantic_extra(query: str, candidates, lexical: list[Hit], embedder) -> list[Hit]:
-    """Записи, найденные только по смыслу. Ранжируются ниже лексических совпадений,
-    а их оценка округляется, чтобы среди похожих работала сортировка по дате."""
     if embedder is None or not getattr(embedder, "ready", False):
         return []
     found = {h.event.id for h in lexical}
@@ -172,7 +160,6 @@ def _semantic_extra(query: str, candidates, lexical: list[Hit], embedder) -> lis
 
 
 def _order(hits: list[Hit], today: date, tense: str | None) -> list[Hit]:
-    """Сначала самые релевантные; среди равных — ближайшие ко «сегодня»."""
     def key(h: Hit):
         d = h.event.date
         if d is None:
@@ -182,6 +169,6 @@ def _order(hits: list[Hit], today: date, tense: str | None) -> list[Hit]:
         elif d >= today:
             distance = (d - today).days
         else:
-            distance = 5_000 + (today - d).days   # прошлые — после будущих
+            distance = 5_000 + (today - d).days   
         return (-round(h.score, 3), distance)
     return sorted(hits, key=key)

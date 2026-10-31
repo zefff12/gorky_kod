@@ -1,11 +1,3 @@
-"""Исправления по замечаниям проверяющего.
-
-1. Память и контекст: контекст переживает перезапуск, история упоминаний накапливается,
-   короткие реплики («а на завтра?») продолжают прошлый запрос.
-2. Ручные формулировки и опечатки работают так же, как заготовленные фразы.
-3. Задачи без даты попадают в списки; «ближайшие N дней» считается по фразе.
-4. Удаление одной записи; резервная копия; дубликаты.
-"""
 from datetime import date, datetime, time
 
 import pytest
@@ -24,12 +16,12 @@ def say(bot, text, user=U):
     return bot.handle(user, text)
 
 
-# ---------------------------------------------------------------- 1. память
+#память
 
 def test_context_survives_restart(tmp_path):
     db = tmp_path / "m.db"
     Assistant(Storage(db), clock=lambda: NOW).handle(U, "Добавь встречу с Иваном завтра в 12")
-    bot = Assistant(Storage(db), clock=lambda: NOW)         # «перезапуск сервера»
+    bot = Assistant(Storage(db), clock=lambda: NOW)         
     r = bot.handle(U, "А перенеси её на понедельник")
     assert r.intent == "reschedule" and "понедельник" in r.text
     assert bot.storage.all(U)[0].date == date(2026, 10, 19)
@@ -57,7 +49,7 @@ def test_mention_history_accumulates(bot):
     say(bot, "Добавь встречу с Иваном завтра в 12")
     say(bot, "Добавь встречу с Иваном по бюджету в пятницу в 16")
     say(bot, "Напомни купить хлеб в 19:00")
-    say(bot, "Что у меня на следующей неделе?")        # фокус сменился, история — нет
+    say(bot, "Что у меня на следующей неделе?")        
     r = say(bot, "Перенеси встречу с Иваном по бюджету на 18:00")
     assert r.awaiting is None and "по бюджету" in r.text
     s = bot.session(U)
@@ -66,7 +58,7 @@ def test_mention_history_accumulates(bot):
 
 def test_pronoun_falls_back_to_history_when_focus_empty(bot):
     say(bot, "Добавь встречу с дизайнером завтра в 11")
-    say(bot, "Найди задачу про несуществующее")         # пустой ответ очищает фокус
+    say(bot, "Найди задачу про несуществующее")         
     r = say(bot, "Перенеси её на 13:00")
     assert r.intent == "reschedule" and bot.storage.all(U)[0].time == time(13, 0)
 
@@ -101,7 +93,7 @@ def test_follow_up_type_keeps_period(bot):
     assert r.text.startswith("Завтра") and len(r.events) == 1 and r.events[0].type is EventType.TASK
 
 
-# ------------------------------------- 2. ручные формулировки = заготовленные фразы
+#ручные формулировки 
 
 CHIP_VARIANTS = {
     "Что у меня на этой неделе?": [
@@ -244,14 +236,13 @@ def test_follow_up_with_date_is_not_a_new_record(bot):
 
 
 def test_typo_in_query_does_not_filter_out_results(bot):
-    """Скриншот проверяющего: «что у меняй завтра?» отвечало «ничего не запланировано»."""
     _seed_week(bot)
-    assert "ничего" in say(bot, "что у меня в воскресенье?").text      # контроль: пустой день
+    assert "ничего" in say(bot, "что у меня в воскресенье?").text      
     r = say(bot, "что у меняй завтра?")
     assert len(r.events) == 1
 
 
-# ------------------------------------------- 3. задачи без даты, «ближайшие N дней»
+#задачи без даты, «ближайшие N дней»
 
 def test_undated_tasks_are_listed(bot):
     say(bot, "Купить молоко")
@@ -261,9 +252,9 @@ def test_undated_tasks_are_listed(bot):
     r = say(bot, "Что запланировано на эту неделю?")
     assert "Купить молоко" in r.text
     r = say(bot, "Что у меня на следующей неделе?")
-    assert "Купить молоко" not in r.text                          # будущий период без «сегодня»
+    assert "Купить молоко" not in r.text                          
     r = say(bot, "Какие встречи сегодня?")
-    assert "Купить молоко" not in r.text                          # фильтр по встречам
+    assert "Купить молоко" not in r.text                         
 
 
 def test_done_undated_tasks_are_hidden(bot):
@@ -282,7 +273,6 @@ def test_reviewer_scenario_task_on_monday_asked_on_wednesday(tmp_path):
     bot = Assistant(Storage(db), clock=lambda: wednesday)
     r = bot.handle(U, "Какие задачи у меня на следующей неделе?")
     assert [e.title for e in r.events] == ["Купить подарок"] and r.events[0].date == date(2026, 10, 21)
-    # 21-е — восьмой день, считая сегодняшнюю среду 14-го
     assert bot.handle(U, "Что у меня в ближайшие 7 дней?").events == []
     r = bot.handle(U, "Что у меня в ближайшие 8 дней?")
     assert r.events and r.events[0].date == date(2026, 10, 21)
@@ -301,7 +291,7 @@ def test_upcoming_span(text, days):
     assert (info.period.end - info.period.start).days + 1 == days, text
 
 
-# ----------------------------------------------- 4. удаление по одной, копия, дубли
+#удаление по одной, копия, дубли
 
 client = TestClient(app)
 
@@ -316,7 +306,6 @@ def test_delete_single_event_via_api():
     left = client.get("/api/events", headers=h).json()
     assert [e["title"] for e in left] == ["Встреча с Марией"]
     assert client.delete(f"/api/events/{ivan['id']}", headers=h).status_code == 404
-    # удалённая запись пропала и из контекста: «её» теперь не на что сослаться
     r = client.post("/api/message", json={"text": "перенеси её на пятницу"}, headers=h).json()
     assert "Встреча с Иваном" not in r["text"]
 
@@ -346,13 +335,13 @@ def test_backup_restores_data_and_context():
     h = {"X-User-Id": "backup_src"}
     client.post("/api/message", json={"text": "Добавь встречу с Иваном завтра в 12"}, headers=h)
     backup = client.get("/api/export", headers=h).json()
-    client.post("/api/reset", headers=h)                       # «Render перезапустился, база пуста»
+    client.post("/api/reset", headers=h)                      
     assert client.get("/api/stats", headers=h).json() == {"total": 0}
     restored = client.post("/api/import", json=backup, headers=h).json()
     assert restored == {"events": 1, "messages": 2}
-    assert client.post("/api/import", json=backup, headers=h).status_code == 409   # без дублей
+    assert client.post("/api/import", json=backup, headers=h).status_code == 409   
     r = client.post("/api/message", json={"text": "перенеси её на понедельник"}, headers=h).json()
-    assert r["intent"] == "reschedule" and "Встреча с Иваном" in r["text"]          # контекст тоже вернулся
+    assert r["intent"] == "reschedule" and "Встреча с Иваном" in r["text"]          
 
 
 def test_duplicate_requires_confirmation(bot):

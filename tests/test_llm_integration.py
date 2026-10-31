@@ -1,4 +1,4 @@
-"""LLM-слой без сети: проверяем преобразование ответа модели и откат на правила."""
+"""LLM-слой без сети"""
 from datetime import date, time
 
 from app.assistant import Assistant

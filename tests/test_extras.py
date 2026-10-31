@@ -18,7 +18,7 @@ def say(bot, text):
     return bot.handle(U, text)
 
 
-# --- изменение названия и времени голосом ---------------------------------------
+#изменение названия и времени голосом 
 
 @pytest.mark.parametrize("text, title, query, last", [
     ("Переименуй её в Позвонить Петру", "Позвонить Петру", None, True),
@@ -53,10 +53,9 @@ def test_change_time_by_voice(bot):
     assert bot.storage.all(U)[0].time == time(15, 30)
 
 
-# --- семантический поиск --------------------------------------------------------
+#семантический поиск 
 
 class FakeEmbedder:
-    """Подставные «смыслы»: близость задаётся словарём, чтобы тест не зависел от модели."""
     ready = True
 
     def __init__(self, close):
@@ -78,7 +77,7 @@ def test_semantic_finds_without_shared_words():
     emb = FakeEmbedder({("речь перед инвесторами", "Подготовить презентацию"): 0.72})
     hits = search(_docs(), "речь перед инвесторами", NOW.date(), embedder=emb)
     assert [h.event.id for h in hits] == [1]
-    assert search(_docs(), "речь перед инвесторами", NOW.date()) == []      # без семантики — пусто
+    assert search(_docs(), "речь перед инвесторами", NOW.date()) == []      
 
 
 def test_semantic_never_outranks_exact_match():

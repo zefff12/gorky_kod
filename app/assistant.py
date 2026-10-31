@@ -1,9 +1,4 @@
-"""Диалоговый менеджер: понимание → уточнение → действие → ответ.
-
-Здесь вся бизнес-логика. Модуль не знает ни про HTTP, ни про голос:
-на вход — текст реплики, на выход — Reply с текстом для экрана и
-коротким текстом для озвучивания.
-"""
+"""Диалоговый менеджер"""
 from __future__ import annotations
 
 import logging
@@ -27,12 +22,11 @@ log = logging.getLogger(__name__)
 ORDINALS = {"первую": 0, "первый": 0, "первое": 0, "1": 0, "вторую": 1, "второй": 1, "второе": 1, "2": 1,
             "третью": 2, "третий": 2, "третье": 2, "3": 2, "четвертую": 3, "четвертый": 3, "4": 3,
             "пятую": 4, "пятый": 4, "5": 4, "последнюю": -1, "последний": -1, "последнее": -1}
-# «без срока», «не важно», «в течение дня», «когда-нибудь» — пользователь отказывается называть время
 NO_TIME_WORDS = {"без", "неважно", "важно", "любое", "любой", "весь", "течение", "никогда", "когда-нибудь", "потом", "знаю", "любое"}
 PRIORITY_NAMES = {"high": "высокий", "medium": "средний", "low": "низкий"}
 MAX_SPOKEN = 5
 MAX_SHOWN = 30
-UPCOMING_DAYS = dates.UPCOMING_DAYS      # период по умолчанию для «что у меня?»
+UPCOMING_DAYS = dates.UPCOMING_DAYS      
 LLM_HISTORY_TURNS = 6
 
 HELP_TEXT = (
@@ -50,7 +44,7 @@ class Reply:
     events: list[Event] = field(default_factory=list)
     intent: str = ""
     parser: str = ""
-    awaiting: str | None = None     # что ассистент ждёт от пользователя (уточнение)
+    awaiting: str | None = None    
 
     def to_dict(self) -> dict:
         return {
@@ -70,9 +64,9 @@ class Assistant:
         self.llm = llm
         self.embedder = embedder
         self.clock = clock
-        self.sessions: dict[str, Session] = {}     # кэш; источник правды — таблица dialog_state
+        self.sessions: dict[str, Session] = {}     
 
-    # ------------------------------------------------------------------ память
+    #память
 
     def session(self, user_id: str) -> Session:
         if user_id not in self.sessions:
@@ -95,7 +89,7 @@ class Assistant:
     def reset_user(self, user_id: str) -> None:
         self.sessions.pop(user_id, None)
 
-    # ------------------------------------------------------------------ entry
+    #entry
 
     def handle(self, user_id: str, text: str, session_id: str = "default") -> Reply:
         """session_id оставлен для совместимости API: контекст общий для всех вкладок пользователя."""
@@ -115,14 +109,13 @@ class Assistant:
         if small_talk:
             return Reply(small_talk, intent="smalltalk", parser="rules")
         try:
-            # контекст прошлого запроса нужен для коротких реплик: «а на завтра?», «а встречи?»
             rule_cmd = rules.parse(text, now, context=session.last)
             if session.pending:
                 reply = self._continue_pending(user_id, session, text, rule_cmd, now)
                 if reply is not None:
-                    reply.parser = "rules"      # ответы на уточнения разбираются правилами
+                    reply.parser = "rules"      
                     return reply
-                session.pending = None          # пользователь сменил тему — начинаем заново
+                session.pending = None          
 
             cmd = self._understand(user_id, session, text, rule_cmd, now)
             reply = self._dispatch(user_id, session, cmd, now)
@@ -161,7 +154,7 @@ class Assistant:
         return Reply("Не совсем понял запрос. " + HELP_TEXT, speech="Не совсем понял. Скажите, например: что у меня сегодня, "
                      "или: напомни завтра в 10 позвонить Ивану.")
 
-    # ------------------------------------------------------------- уточнения
+    #уточнения
 
     def _continue_pending(self, user_id: str, s: Session, text: str, rule_cmd: ParsedCommand, now: datetime) -> Reply | None:
         p = s.pending
@@ -190,7 +183,6 @@ class Assistant:
             info = dates.extract(tokens, now, future_bias=True)
             no_time = p.kind == "need_time" and bool({t.norm for t in tokens} & NO_TIME_WORDS)
             if info.time is None and info.date is None:
-                # голое число: «в 11» без предлога уже покрыто; «11», «15:30» — тоже время
                 words = [t.norm for t in tokens if t.norm[0].isalnum()]
                 if len(words) == 1 and words[0].isdigit() and 0 <= int(words[0]) <= 23:
                     info.time = dates._fix_hour(int(words[0]), 0, None)
@@ -198,7 +190,6 @@ class Assistant:
                     s.pending = None
                     return self._finalize_create(user_id, s, p.draft, now, allow_no_time=True)
                 elif p.kind == "need_time" and rule_cmd.intent in (Intent.UNKNOWN, Intent.CREATE) and _is_generic(p.draft.title):
-                    # «Добавь встречу» → «с бухгалтером»: это уточнение названия, время спросим ещё раз
                     extra = rules.build_title(tokenize(text)) or text
                     p.draft.title = f"{p.draft.title} {extra[:1].lower() + extra[1:]}".strip()
                     return Reply(f"Хорошо, «{p.draft.title}». На какой день и время?", awaiting="need_time", intent="create")
@@ -224,7 +215,6 @@ class Assistant:
             return self._apply_rename(user_id, s, p.draft, title)
 
         if p.kind == "confirm_conflict" and rule_cmd.intent in (Intent.RESCHEDULE, Intent.UNKNOWN)                 and rule_cmd.query is None and (rule_cmd.date or rule_cmd.time):
-            # «Давай на 14:30», «Измени время на 14:30» — двигаем новую встречу и проверяем снова
             draft = replace(p.draft, date=rule_cmd.date or p.draft.date, time=rule_cmd.time or p.draft.time)
             s.pending = None
             return self._finalize_create(user_id, s, draft, now)
@@ -264,7 +254,7 @@ class Assistant:
             return self._do_action(user_id, s, p.action, chosen, p.cmd, now)
         return None
 
-    # ---------------------------------------------------------------- create
+    #acreate
 
     def _create(self, user_id: str, s: Session, cmd: ParsedCommand, now: datetime) -> Reply:
         etype = cmd.event_type or EventType.TASK
@@ -283,7 +273,6 @@ class Assistant:
 
     def _finalize_create(self, user_id: str, s: Session, draft: Event, now: datetime,
                          allow_no_time: bool = False, deadline: bool = False, allow_duplicate: bool = False) -> Reply:
-        # только время без даты → сегодня, а если время уже прошло — завтра
         if draft.time and not draft.date:
             draft.date = now.date() if draft.time > now.time() else now.date() + timedelta(days=1)
 
@@ -300,7 +289,6 @@ class Assistant:
             s.pending = Pending("need_time", draft=draft)
             q = "Когда напомнить?" if draft.date is None else f"Во сколько напомнить {human_date(draft.date, now.date())}?"
             return Reply(q, awaiting="need_time", intent="create")
-        # задача без времени: спрашиваем «когда и во сколько», кроме сроков («до пятницы») и повторов
         if draft.type is EventType.TASK and draft.time is None and not (allow_no_time or deadline or draft.recurrence):
             s.pending = Pending("need_time", draft=draft)
             if draft.date is None:
@@ -350,19 +338,17 @@ class Assistant:
             text += " Обратите внимание: это время уже прошло."
         return Reply(text, events=[saved], intent="create")
 
-    # ------------------------------------------------------------------ list
+    #list
 
     def _list(self, user_id: str, s: Session, cmd: ParsedCommand, now: datetime) -> Reply:
         today = now.date()
         if cmd.query and not cmd.period and not cmd.date:
-            # «были ли встречи с Альфой», «что там с CRM» — это поиск, а не список на период
             return self._search(user_id, s, cmd, now)
         period = cmd.period or (Period(cmd.date, cmd.date, human_date(cmd.date, today)) if cmd.date else None)
         if period is None:
             period = Period(today, today + timedelta(days=UPCOMING_DAYS - 1), f"в ближайшие {UPCOMING_DAYS} дней")
         s.last = DialogContext(Intent.LIST, cmd.event_type, period, cmd.query, cmd.tense)
 
-        # задачи без срока показываем в любом списке, который включает сегодняшний день
         with_undated = period.start <= today <= period.end and cmd.event_type is not EventType.MEETING
         events = self.storage.in_range(user_id, period.start, period.end, include_undated=with_undated)
         if cmd.event_type is EventType.MEETING:
@@ -410,7 +396,7 @@ class Assistant:
         или опечатка («что у меняй завтра») — фильтровать по нему нельзя."""
         return bool(search(self.storage.all(user_id), query, today, limit=1))
 
-    # ---------------------------------------------------------------- search
+    #search
 
     def _find(self, user_id: str, cmd: ParsedCommand, now: datetime, query: str | None = None):
         events = self.storage.all(user_id)
@@ -453,34 +439,27 @@ class Assistant:
             s.remember([top.id])
         return Reply(text, speech=head, events=found[:10], intent="search")
 
-    # ------------------------------------------------ reschedule / complete / delete
+    #reschedule/complete/delete
 
     def _modify(self, user_id: str, s: Session, cmd: ParsedCommand, now: datetime) -> Reply:
         action = cmd.intent.value
         candidates: list[Event] = []
         if cmd.query and not cmd.refers_to_last:
-            # при переносе новая дата не должна фильтровать поиск старой записи
             lookup = replace(cmd, period=None if cmd.intent is Intent.RESCHEDULE else cmd.period)
             hits = self._find(user_id, lookup, now)
             if cmd.intent is Intent.COMPLETE:
                 hits = [h for h in hits if not h.event.done] or hits
-            # среди равных по релевантности берём предстоящие
             upcoming = [h for h in hits if h.event.date is None or h.event.date >= now.date()]
             if cmd.intent is not Intent.DELETE and upcoming:
                 hits = upcoming
             candidates = [h.event for h in hits]
-            # удаление необратимо — при нескольких совпадениях всегда спрашиваем
             if cmd.intent is not Intent.DELETE and len(candidates) > 1:
-                # запись, о которой недавно говорили, важнее остальных совпадений:
-                # смотрим во всю накопленную историю, а не только в последний ответ
                 recent = [e for e in candidates if s.recency(e.id) is not None]
                 if recent:
                     candidates = [min(recent, key=lambda e: s.recency(e.id))]
-                # явный лидер по релевантности — без лишнего вопроса «какую?»
                 elif hits[0].score >= 1.3 * hits[1].score:
                     candidates = [hits[0].event]
         else:
-            # «её», «эту встречу»: последний ответ, а если он пуст — последняя упомянутая запись
             ids = s.focus[:5] or s.history[:1]
             candidates = [e for e in (self.storage.get(user_id, i) for i in ids) if e]
 
@@ -531,7 +510,6 @@ class Assistant:
         return Reply(f"Переименовал: «{old}» → «{stored.title}».", events=[stored], intent="rename")
 
     def _apply_reschedule(self, user_id: str, s: Session, target: Event, new_date: date | None, new_time: time | None, now: datetime) -> Reply:
-        # повторяющиеся записи переносим целиком (меняется опорная дата серии)
         stored = self.storage.get(user_id, target.id) or target
         stored.date = new_date or stored.date or now.date()
         if new_time:
@@ -571,7 +549,7 @@ def _period_label(p: Period, today: date) -> str:
     if p.start == p.end:
         delta = (p.start - today).days
         if -1 <= delta < 7:
-            return human_date(p.start, today)          # «завтра», «в понедельник, 19 октября»
+            return human_date(p.start, today)         
         return "на " + human_date(p.start, today, False)
     if p.label:
         return p.label

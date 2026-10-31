@@ -1,8 +1,4 @@
-"""Хранилище на SQLite: записи, состояние диалога и история сообщений.
-
-Модуль ничего не знает про язык: состояние диалога хранится как готовый JSON,
-который сериализует app/memory.py.
-"""
+"""Хранилище на SQLite"""
 from __future__ import annotations
 
 import json
@@ -86,7 +82,6 @@ def _row_to_event(row: sqlite3.Row) -> Event:
 
 
 def _occurs_on(ev: Event, day: date) -> bool:
-    """Попадает ли повторяющаяся запись на конкретный день."""
     if ev.date is None or day < ev.date:
         return False
     if ev.recurrence is Recurrence.DAILY:
@@ -103,11 +98,9 @@ class Storage:
         self.path = str(path)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        # Для :memory: держим одно соединение, иначе база исчезнет между вызовами.
         self._shared = sqlite3.connect(":memory:", check_same_thread=False) if self.path == ":memory:" else None
         with self._conn() as c:
             c.executescript(SCHEMA)
-            # миграция баз, созданных до появления приоритетов
             columns = {r["name"] for r in c.execute("PRAGMA table_info(events)")}
             if "priority" not in columns:
                 c.execute("ALTER TABLE events ADD COLUMN priority TEXT")
@@ -123,7 +116,7 @@ class Storage:
             if conn is not self._shared:
                 conn.close()
 
-    # --- CRUD -------------------------------------------------------------
+    #CRUD 
 
     def add(self, ev: Event) -> Event:
         created = ev.created_at or datetime.now().replace(microsecond=0)
@@ -199,7 +192,7 @@ class Storage:
                 return c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
             return c.execute("SELECT COUNT(*) FROM events WHERE user_id = ?", (user_id,)).fetchone()[0]
 
-    # --- выборки ------------------------------------------------------------
+    #выборки
 
     def all(self, user_id: str) -> list[Event]:
         with self._conn() as c:
@@ -207,11 +200,6 @@ class Storage:
         return [_row_to_event(r) for r in rows]
 
     def in_range(self, user_id: str, start: date, end: date, include_undated: bool = False) -> list[Event]:
-        """Записи с датой в [start, end] плюс вхождения повторяющихся записей.
-
-        include_undated=True добавляет невыполненные записи без даты (date IS NULL):
-        иначе задача «без срока» не попала бы ни в один список.
-        """
         with self._conn() as c:
             rows = c.execute(
                 "SELECT * FROM events WHERE user_id = ? AND ("
@@ -230,7 +218,6 @@ class Storage:
                 if _occurs_on(ev, day):
                     result.append(replace(ev, date=day))
                 day += timedelta(days=1)
-        # записи без даты — в конце списка
         result.sort(key=lambda e: (e.date is None, e.date or date.max, e.time or time(0, 0), e.id))
         return result
 
@@ -245,7 +232,7 @@ class Storage:
             ).fetchone()
         return _row_to_event(row) if row else None
 
-    # --- память агента -------------------------------------------------------
+    #память агента
 
     def load_dialog(self, user_id: str) -> dict | None:
         with self._conn() as c:
@@ -266,13 +253,12 @@ class Storage:
                       (user_id, role, text, (at or datetime.now()).isoformat(timespec="seconds")))
 
     def messages(self, user_id: str, limit: int = 50) -> list[dict]:
-        """Последние сообщения в хронологическом порядке."""
         with self._conn() as c:
             rows = c.execute("SELECT role, text, created_at FROM messages WHERE user_id = ? ORDER BY id DESC LIMIT ?",
                              (user_id, limit)).fetchall()
         return [dict(r) for r in reversed(rows)]
 
-    # --- резервная копия (восстановление после перезапуска хостинга) ---------
+    #резервная копия 
 
     def export_user(self, user_id: str) -> dict:
         return {
@@ -282,8 +268,6 @@ class Storage:
         }
 
     def import_user(self, user_id: str, data: dict) -> dict:
-        """Восстановить данные пользователя из export_user. Старые id записей
-        заменяются новыми, ссылки на них в контексте диалога переназначаются."""
         id_map: dict[int, int] = {}
         events = data.get("events", [])[:5000]
         for raw in events:
@@ -311,11 +295,6 @@ class Storage:
     def query(self, user_id: str, start: date | None = None, end: date | None = None,
               types: set[EventType] | None = None, status: str = "all", undated: bool = True,
               today: date | None = None, limit: int = 2000) -> list[Event]:
-        """Все записи пользователя с фильтрами — для страниц «Мои задачи», «Встречи» и т.д.
-
-        start/end — период (повторяющиеся записи разворачиваются в вхождения);
-        без периода возвращаются сами записи. status: all | active | done | overdue.
-        """
         if start or end:
             start = start or date(1970, 1, 1)
             end = end or date(2100, 12, 31)
@@ -340,7 +319,7 @@ class Storage:
         events.sort(key=lambda e: (e.date is None, e.date or date.max, e.time or time(0, 0), e.id))
         return events[:limit]
 
-    # --- аккаунты --------------------------------------------------------------
+    #аккаунты
 
     def create_user(self, name: str, email: str, password_hash: str) -> int | None:
         """id нового пользователя или None, если почта уже занята."""
@@ -375,7 +354,6 @@ class Storage:
             c.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_hash,))
 
     def reassign(self, from_user: str, to_user: str) -> int:
-        """Перенести записи, историю и контекст гостя в аккаунт (при регистрации)."""
         with self._conn() as c:
             cur = c.execute("UPDATE events SET user_id = ? WHERE user_id = ?", (to_user, from_user))
             c.execute("UPDATE messages SET user_id = ? WHERE user_id = ?", (to_user, from_user))
@@ -384,7 +362,6 @@ class Storage:
         return cur.rowcount
 
     def conflicts(self, user_id: str, day: date, at: time, duration_min: int, exclude_id: int | None = None) -> list[Event]:
-        """Встречи, пересекающиеся по времени с [at, at + duration)."""
         start = datetime.combine(day, at)
         end = start + timedelta(minutes=duration_min)
         found = []
@@ -399,7 +376,6 @@ class Storage:
 
 
 def _remap_ids(obj, id_map: dict[int, int]):
-    """Заменить старые id записей в сохранённом контексте диалога на новые."""
     if isinstance(obj, dict):
         out = {}
         for k, v in obj.items():

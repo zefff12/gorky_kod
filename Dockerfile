@@ -3,8 +3,6 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-# Семантический поиск: модель (~240 МБ на диске, ~700 МБ в памяти) скачивается при сборке.
-# На хостинге с 512 МБ памяти собирайте с SEMANTIC_SEARCH=0 — останется лексический поиск.
 ARG SEMANTIC_SEARCH=1
 ENV SEMANTIC_SEARCH=${SEMANTIC_SEARCH} MODEL_CACHE=/app/models
 RUN if [ "$SEMANTIC_SEARCH" = "1" ]; then \

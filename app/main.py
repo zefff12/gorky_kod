@@ -1,4 +1,4 @@
-"""HTTP-слой: FastAPI + статика. Только транспорт, логика — в assistant.py."""
+"""HTTP-слой"""
 from __future__ import annotations
 
 import logging
@@ -46,7 +46,7 @@ USER_RE = re.compile(r"^[\w-]{1,40}$")
 SESSION_COOKIE = "va_session"
 
 
-# ------------------------------------------------------------------ пользователь
+#пользователь
 
 def current_account(request: Request) -> auth.Account | None:
     token = request.cookies.get(SESSION_COOKIE)
@@ -62,7 +62,6 @@ def current_user(request: Request, x_user_id: str | None = Header(None)) -> str:
     if account:
         return account.data_id
     uid = (x_user_id or DEMO_USER).strip()
-    # гостевой id не может выдавать себя за аккаунт
     if not USER_RE.match(uid) or uid.startswith(auth.ACCOUNT_PREFIX):
         raise HTTPException(400, "Некорректный идентификатор пользователя")
     return uid
@@ -77,7 +76,7 @@ def _set_session(request: Request, response: Response, user_id: int, remember: b
                         max_age=int(lifetime.total_seconds()) if remember else None, path="/")
 
 
-# ------------------------------------------------------------------ аккаунты
+#аккаунты
 
 class RegisterIn(BaseModel):
     name: str = Field(..., max_length=120)
@@ -153,7 +152,7 @@ def me(request: Request):
     return account.to_dict() if account else {"authenticated": False}
 
 
-# ------------------------------------------------------------------ диалог
+#диалог
 
 class MessageIn(BaseModel):
     text: str = Field(..., max_length=1000)
@@ -172,7 +171,7 @@ def history(limit: int = Query(50, ge=1, le=500), uid: str = Depends(current_use
     return storage.messages(uid, limit=limit)
 
 
-# ------------------------------------------------------------------ записи
+#записи
 
 @app.get("/api/events")
 def events(
@@ -250,7 +249,7 @@ def delete_event(event_id: int, uid: str = Depends(current_user)):
     return {"ok": True}
 
 
-# ------------------------------------------------------------------ данные профиля
+#данные профиля
 
 @app.get("/api/export")
 def export(uid: str = Depends(current_user)):
@@ -310,7 +309,7 @@ def health():
     }
 
 
-# ------------------------------------------------------------------ страницы
+#страницы
 
 STATIC_DIR = config.BASE_DIR / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

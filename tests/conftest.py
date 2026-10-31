@@ -9,17 +9,15 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-# API-тесты импортируют app.main, который создаёт базу при импорте — уводим её во временную папку.
 os.environ.setdefault("DB_PATH", str(Path(tempfile.mkdtemp()) / "test.db"))
 os.environ.setdefault("FAKE_NOW", "2026-10-15T11:20")
 os.environ["USE_LLM"] = "0"
-os.environ["SEMANTIC_SEARCH"] = "0"   # детерминированные тесты; семантика проверяется отдельно
+os.environ["SEMANTIC_SEARCH"] = "0" 
 
-from app.assistant import Assistant  # noqa: E402
-from app.seed import seed_if_empty  # noqa: E402
-from app.storage import Storage  # noqa: E402
+from app.assistant import Assistant  
+from app.seed import seed_if_empty  
+from app.storage import Storage  
 
-# Четверг, 15 октября 2026, 11:20
 NOW = datetime(2026, 10, 15, 11, 20)
 CSV = ROOT / "data" / "voice_assistant_events_1000.csv"
 

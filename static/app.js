@@ -1,5 +1,3 @@
-// Клиент ассистента: разделы по макету Figma, голос (Web Speech API), чат и списки записей.
-// Распознавание и синтез речи выполняет браузер; сервер получает только текст.
 (() => {
   const $ = (id) => document.getElementById(id);
   const ICONS = "/static/icons.svg";
@@ -8,7 +6,7 @@
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
 
-  // ------------------------------------------------------------ пользователь
+  //пользователь
   let me = { authenticated: false };
   let guestId = store.get("userId", "");
   if (!guestId) {
@@ -20,8 +18,8 @@
   });
   const getJSON = async (path) => { const r = await api(path); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); };
 
-  // ------------------------------------------------------------ даты
-  let TODAY = new Date();                              // уточняется по времени сервера
+  //даты
+  let TODAY = new Date();                             
   const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
   const MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
   const WD_SHORT = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
@@ -48,7 +46,7 @@
   const TYPE_NAME = { task: "Задача", meeting: "Встреча", reminder: "Напоминание" };
   const isOverdue = (e) => !e.done && e.date && !e.recurrence && e.date < todayIso();
 
-  // ------------------------------------------------------------ мелкие элементы
+  //мелкие элементы
   function el(tag, cls, text) {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -82,7 +80,6 @@
     toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
   }
 
-  // одно открытое меню за раз; клик мимо закрывает
   let openMenu = null;
   function toggleMenu(menu, fill) {
     const willOpen = menu.hidden;
@@ -94,7 +91,7 @@
     if (openMenu && !openMenu.contains(e.target) && !e.target.closest("[data-menu-trigger]")) closeMenus();
   });
 
-  // ------------------------------------------------------------ действия с записями
+  //действия с записями
   async function setDone(e, done) {
     await api(`/api/events/${e.id}`, { method: "PATCH", body: JSON.stringify({ done }) });
     await refresh();
@@ -145,8 +142,6 @@
   const PRIO_NAME = { high: "Высокий", medium: "Средний", low: "Низкий" };
   const KIND_ICON = { task: "doc", meeting: "users", reminder: "bell" };
 
-  // compact — строка как в блоке «Сегодня» макета: приоритет и иконка типа;
-  // иначе (страницы-списки) ещё плашка типа и иллюстрация категории
   function rowEl(e, { showDate = false, compact = false } = {}) {
     const row = el("div", `row${e.done ? " done" : ""}`);
     const cb = el("input", "check");
@@ -176,7 +171,6 @@
 
   function meetEl(e) {
     const m = el("div", "meet");
-    // в макете: созвоны и обсуждения — красная плитка с камерой, остальные встречи — фиолетовая с людьми
     const video = ["call", "discussion"].includes(e.category);
     const ico = el("div", `ico ${video ? "red" : "purple"}`);
     ico.append(icon(video ? "video" : "users"));
@@ -188,7 +182,7 @@
 
   function emptyEl(text) { return el("p", "empty", text); }
 
-  // ------------------------------------------------------------ чат
+  //чат
   const log = $("log"), input = $("input"), statusEl = $("status"), stopBtn = $("stop"), mic = $("mic");
   let speakOn = store.get("speak", "1") === "1";
 
@@ -239,7 +233,7 @@
     if (b.dataset.feature === "calendar") go("#/calendar");
   });
 
-  // ---------- синтез речи и «Стоп»
+  //синтез речи и «Стоп»
   let ruVoice = null;
   function pickVoice() {
     const voices = window.speechSynthesis?.getVoices() || [];
@@ -261,7 +255,7 @@
   }
   stopBtn.onclick = stopSpeaking;
 
-  // ---------- распознавание речи
+  //распознавание речи
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null, recording = false, interimEl = null;
   if (!SR) {
@@ -300,14 +294,14 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); $("search").focus(); }
   });
 
-  // ------------------------------------------------------------ главная
+  //главная
   let selectedDay = null;
   async function renderHome() {
-    const events = await getJSON("/api/events");                    // сегодня + 6 дней + без срока
+    const events = await getJSON("/api/events");                   
     const today = todayIso();
     $("todayLabel").textContent = `${TODAY.getDate()} ${MONTHS_GEN[TODAY.getMonth()]}, ${WD_LONG[TODAY.getDay()]}`;
 
-    // полоса дней
+    //полоса дней
     selectedDay = selectedDay || today;
     const days = $("days");
     days.replaceChildren();
@@ -338,7 +332,6 @@
       agenda.appendChild(row);
     }
 
-    // «Сегодня»: записи на сегодня и задачи без срока
     const todayList = $("todayList");
     todayList.replaceChildren();
     const todays = events.filter((e) => e.date === today || e.date === null);
@@ -353,7 +346,7 @@
     meets.slice(0, 4).forEach((e) => ml.appendChild(meetEl(e)));
   }
 
-  // ------------------------------------------------------------ списки с фильтрами
+  //списки с фильтрами
   const LISTS = {
     tasks: { title: "Мои задачи", sub: "Все записи — выберите период или даты", types: "", prefill: "Поставь задачу ",
       presets: ["all", "today", "week", "month", "overdue", "undated", "done"] },
@@ -414,7 +407,7 @@
   $("listQuery").addEventListener("input", () => { clearTimeout(queryTimer); queryTimer = setTimeout(renderList, 250); });
 
   async function renderList() {
-    const seq = ++listSeq;                       // ответ на устаревший запрос отбрасываем
+    const seq = ++listSeq;                      
     document.querySelectorAll("#presets button").forEach((b) => b.classList.toggle("on", b.dataset.preset === listPreset));
     const cfg = LISTS[listKind];
     const params = new URLSearchParams();
@@ -424,7 +417,6 @@
     const types = cfg.types || $("typeFilter").value;
     if (types) params.set("types", types);
     params.set("status", $("statusFilter").value);
-    // «без срока» показываем, если период не задан или включает сегодня
     const undatedOnly = listPreset === "undated";
     const includeUndated = undatedOnly || (!from && !to) || (from <= todayIso() && (!to || to >= todayIso()) && listPreset !== "past");
     params.set("undated", includeUndated ? "true" : "false");
@@ -466,7 +458,7 @@
     return many;
   }
 
-  // ------------------------------------------------------------ календарь
+  //календарь
   let calMonth = null, calSel = null;
   async function renderCalendar() {
     calMonth = calMonth || new Date(TODAY.getFullYear(), TODAY.getMonth(), 1);
@@ -508,7 +500,7 @@
   $("calNext").onclick = () => { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1); renderCalendar(); };
   $("calToday").onclick = () => { calMonth = null; calSel = null; renderCalendar(); };
 
-  // ------------------------------------------------------------ история
+  //история
   async function renderHistory() {
     const items = await getJSON("/api/history?limit=500");
     const box = $("historyBody");
@@ -522,7 +514,7 @@
     }
   }
 
-  // ------------------------------------------------------------ поиск (Ctrl+K)
+  //поиск 
   let searchTimer;
   const searchBox = $("search"), results = $("searchResults");
   searchBox.addEventListener("input", () => {
@@ -554,7 +546,7 @@
     if (e.key === "Enter") { e.preventDefault(); const q = searchBox.value.trim(); results.hidden = true; go(`#/tasks?q=${encodeURIComponent(q)}`); }
   });
 
-  // ------------------------------------------------------------ колокольчик
+  //колокольчик
   async function renderBell() {
     const due = await getJSON(`/api/items?types=reminder&status=active&undated=false&start=${iso(addDays(TODAY, -30))}&end=${todayIso()}`);
     $("bellDot").hidden = !due.length;
@@ -580,7 +572,7 @@
     };
   }
 
-  // ------------------------------------------------------------ профиль
+  //профиль
   function renderProfile() {
     const initials = me.authenticated ? me.initials : "Г";
     ["profileAvatar", "topAvatar"].forEach((id) => { $(id).textContent = initials; $(id).dataset.menuTrigger = "1"; });
@@ -652,8 +644,6 @@
     location.replace("/login");
   }
 
-  // ------------------------------------------------------------ резервная копия
-  // Бесплатный хостинг теряет базу при перезапуске: браузер хранит копию и возвращает её.
   const backupKey = () => (me.authenticated ? `backup:acc:${me.email}` : `backup:${guestId}`);
   async function saveBackup() {
     try { const r = await api("/api/export"); if (r.ok) store.set(backupKey(), await r.text()); } catch {}
@@ -679,7 +669,7 @@
       : "Привет! Я веду задачи, напоминания и встречи. Скажите или напишите, что нужно сделать.", "bot");
   }
 
-  // ------------------------------------------------------------ маршрутизация
+  //маршрутизация
   function go(hash) { if (location.hash !== hash) location.hash = hash; else route(); }
   async function route() {
     closeMenus();
@@ -703,7 +693,6 @@
   }
   window.addEventListener("hashchange", route);
 
-  // обновить то, что сейчас на экране, и счётчики
   async function refresh() {
     const [path] = (location.hash.replace(/^#/, "") || "/").split("?");
     try {
@@ -715,7 +704,7 @@
     } catch {}
   }
 
-  // ------------------------------------------------------------ старт
+  //старт
   async function start() {
     try { me = await (await fetch("/api/auth/me")).json(); } catch {}
     if (!me.authenticated && store.get("guestOk", "") !== "1") { location.replace("/login"); return; }
@@ -725,8 +714,6 @@
       if (!isNaN(d)) TODAY = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     } catch {}
     renderProfile();
-    // как в макете: на главной нет старой переписки — она в разделе «История»,
-    // лента появляется с первой репликой
     const restored = await restoreIfNeeded();
     if (restored) toast("Восстановил ваши записи и наш разговор после перезапуска сервера");
     const welcome = store.get("welcome", "");

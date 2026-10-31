@@ -1,16 +1,4 @@
-"""Память агента: контекст диалога и его сохранение между запросами и перезапусками.
-
-Что помнит агент:
-- focus    — записи из последнего ответа («её», «вторую», «перенеси её на завтра»);
-- history  — накопительная история упомянутых записей, самые свежие первыми
-             (focus перезаписывается каждым ответом, history — нет);
-- last     — последний запрос списка/поиска, чтобы понимать короткие реплики
-             «а на завтра?», «а встречи?», «а с Марией?»;
-- pending  — незаконченное уточнение («На какое время поставить встречу?»).
-
-Состояние сериализуется в JSON и хранится в таблице dialog_state, поэтому
-контекст не теряется при перезагрузке страницы и перезапуске сервера.
-"""
+"""Память агента"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -23,18 +11,16 @@ HISTORY_SIZE = 30
 
 @dataclass
 class Pending:
-    kind: str                         # need_title | need_time | need_new_time | need_new_title |
-                                      # confirm_conflict | confirm_duplicate | confirm_delete | choose
+    kind: str                        
     draft: Event | None = None
-    action: str | None = None         # для choose: reschedule | complete | delete | rename
+    action: str | None = None         
     candidates: list[Event] = field(default_factory=list)
     cmd: ParsedCommand | None = None
-    deadline: bool = False            # дата черновика — срок («до пятницы»), время не нужно
+    deadline: bool = False          
 
 
 @dataclass
 class DialogContext:
-    """Сводка о последнем запросе — передаётся в разбор следующей реплики."""
 
     intent: Intent | None = None
     event_type: EventType | None = None
@@ -55,7 +41,6 @@ class Session:
     pending: Pending | None = None
 
     def remember(self, ids: list[int | None]) -> None:
-        """Сделать записи текущим фокусом и добавить их в начало истории."""
         ids = [i for i in ids if i is not None]
         self.focus = ids
         self.history = (ids + [h for h in self.history if h not in ids])[:HISTORY_SIZE]
@@ -65,10 +50,9 @@ class Session:
         self.history = [i for i in self.history if i != event_id]
 
     def recency(self, event_id: int) -> int | None:
-        """Насколько давно упоминалась запись: 0 — только что, None — не упоминалась."""
         return self.history.index(event_id) if event_id in self.history else None
 
-    # --- сериализация -----------------------------------------------------
+    #сериализация
 
     def to_dict(self) -> dict:
         return {
@@ -80,7 +64,6 @@ class Session:
 
     @classmethod
     def from_dict(cls, data: dict | None, load_event) -> "Session":
-        """load_event(id) -> Event | None — подгружает записи-кандидаты из базы."""
         if not data:
             return cls()
         return cls(
@@ -91,7 +74,7 @@ class Session:
         )
 
 
-# --- helpers ---------------------------------------------------------------
+#helpers
 
 def _d(v):
     return v.isoformat() if isinstance(v, (date, datetime)) else v
@@ -200,7 +183,6 @@ def _pending_from_dict(d: dict | None, load_event) -> Pending | None:
         return None
     draft = event_from_dict(d["draft"]) if d.get("draft") else None
     if draft is not None and draft.id is not None:
-        # черновик ссылается на сохранённую запись — берём актуальную версию из базы
         draft = load_event(draft.id) or None
         if draft is None:
             return None

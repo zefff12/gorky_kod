@@ -1,4 +1,3 @@
-"""Человекочитаемые даты и списки на русском — для текстового и голосового ответа."""
 from __future__ import annotations
 
 from datetime import date, time
@@ -65,7 +64,6 @@ def human_when(ev: Event, today: date) -> str:
 
 
 def describe(ev: Event, today: date, with_date: bool = True) -> str:
-    """Одна строка о записи: «встреча «Созвон с Альфой» — завтра в 15:00»."""
     kind = TYPE_NAMES[ev.type]
     parts = [f"{kind} «{ev.title}»"]
     if with_date:

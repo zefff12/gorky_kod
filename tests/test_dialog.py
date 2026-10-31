@@ -1,4 +1,4 @@
-"""Сценарии диалога целиком: реплика → действие с данными → ответ."""
+"""Сценарии диалога целиком"""
 from datetime import date, time
 
 from app.assistant import Assistant
@@ -135,7 +135,7 @@ def test_recurring_meeting_shows_every_week(bot):
     [ev] = bot.storage.all(U)
     assert ev.recurrence is Recurrence.WEEKLY
     r = say(bot, "Что у меня в следующем месяце?")
-    assert len(r.events) == 5      # понедельники ноября 2026: 2, 9, 16, 23, 30
+    assert len(r.events) == 5     
 
 
 def test_unknown_request_gives_help(bot):
@@ -159,7 +159,7 @@ def test_data_persists_between_restarts(tmp_path):
     assert "Позвонить Ивану" in r.text
 
 
-# --- поиск по импортированному датасету -----------------------------------------
+#поиск по импортированному датасету 
 
 def test_search_task_about_presentation(seeded_bot):
     r = seeded_bot.handle("demo", "Найди задачу про презентацию")

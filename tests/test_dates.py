@@ -5,7 +5,7 @@ import pytest
 from app.models import Recurrence
 from app.nlu.dates import extract
 from app.nlu.text import join_tokens, tokenize
-from conftest import NOW  # четверг 15.10.2026 11:20
+from conftest import NOW  
 
 
 def run(text, **kw):

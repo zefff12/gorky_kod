@@ -1,4 +1,4 @@
-// Вход и регистрация. Режим определяется адресом: /login или /register.
+// Вход и регистрация
 (() => {
   const mode = location.pathname.startsWith("/register") ? "register" : "login";
   document.querySelectorAll("[data-mode]").forEach((el) => { el.hidden = el.dataset.mode !== mode; });
@@ -9,13 +9,11 @@
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
   };
 
-  // уже вошли — сразу в приложение
   fetch("/api/auth/me").then((r) => r.json()).then((me) => { if (me.authenticated) location.replace("/"); }).catch(() => {});
 
-  // гостевой режим: без аккаунта, данные привязаны к этому браузеру
   document.querySelectorAll("[data-guest]").forEach((a) => a.addEventListener("click", () => store.set("guestOk", "1")));
 
-  // показать/скрыть пароль
+
   document.querySelectorAll(".eye").forEach((btn) => btn.addEventListener("click", () => {
     const input = btn.parentElement.querySelector("input");
     const show = input.type === "password";
@@ -43,7 +41,7 @@
     return { ok: res.ok, status: res.status, data };
   }
 
-  // ---------- вход ----------
+  //вход 
   const loginForm = document.getElementById("loginForm");
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -58,7 +56,7 @@
     else showError(loginForm, typeof r.data.detail === "string" ? r.data.detail : "Не удалось войти");
   });
 
-  // ---------- регистрация ----------
+  //регистрация
   const regForm = document.getElementById("registerForm");
   const rules = {
     len: (p) => p.length >= 8,

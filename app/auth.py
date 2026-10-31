@@ -1,9 +1,4 @@
-"""Аккаунты: регистрация, вход, сессии.
-
-Пароли хранятся только как scrypt-хэш с солью. Браузер получает случайный
-токен в HttpOnly-cookie, в базе лежит лишь его SHA-256 — утечка базы не
-даёт войти в чужой аккаунт. Без входа работает гостевой режим (X-User-Id).
-"""
+"""Аккаунты: регистрация, вход, сессии."""
 from __future__ import annotations
 
 import hashlib
@@ -17,9 +12,7 @@ SCRYPT_N, SCRYPT_R, SCRYPT_P = 2 ** 14, 8, 1
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{2,}$")
 SESSION_DAYS_REMEMBER = 30
 SESSION_HOURS_SHORT = 24
-ACCOUNT_PREFIX = "acc-"          # id данных пользователя с аккаунтом; гостям такой id запрещён
-
-# Защита от перебора пароля: не больше 8 неудачных попыток на почту за 15 минут
+ACCOUNT_PREFIX = "acc-"          
 MAX_FAILS, FAIL_WINDOW_S = 8, 15 * 60
 _fails: dict[str, list[float]] = {}
 
@@ -62,7 +55,6 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def password_problems(password: str) -> list[str]:
-    """Требования из макета регистрации."""
     problems = []
     if len(password) < 8:
         problems.append("минимум 8 символов")
@@ -84,7 +76,6 @@ def valid_email(email: str) -> bool:
 
 
 def new_token() -> tuple[str, str]:
-    """(токен для cookie, его хэш для базы)."""
     token = secrets.token_urlsafe(32)
     return token, token_hash(token)
 

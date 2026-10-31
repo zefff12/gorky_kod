@@ -1,4 +1,4 @@
-"""Аккаунты (вход/регистрация из макета), выборка всех задач по датам, категории."""
+"""Аккаунты"""
 from datetime import date
 
 import pytest
@@ -20,14 +20,14 @@ def register(client, email, name="Иванова Ирина", password=GOOD_PASS
     return client.post("/api/auth/register", json=body, headers=headers or {})
 
 
-# ------------------------------------------------------------------ пароли
+#пароли
 
 def test_password_hash_roundtrip():
     h = auth.hash_password(GOOD_PASSWORD)
     assert h.startswith("scrypt$") and GOOD_PASSWORD not in h
     assert auth.verify_password(GOOD_PASSWORD, h)
     assert not auth.verify_password("wrong", h)
-    assert auth.hash_password(GOOD_PASSWORD) != h          # соль разная
+    assert auth.hash_password(GOOD_PASSWORD) != h          
 
 
 @pytest.mark.parametrize("pw, problem", [
@@ -43,7 +43,7 @@ def test_initials():
     assert auth.Account(1, "Иванова И.И.", "a@b.ru").initials == "ИИ"
 
 
-# ------------------------------------------------------------------ регистрация и вход
+#регистрация и вход
 
 def test_register_login_logout_flow():
     c = new_client()
@@ -60,7 +60,7 @@ def test_register_login_logout_flow():
     r = other.post("/api/auth/login", json={"email": "FLOW@example.com", "password": GOOD_PASSWORD, "remember": True})
     assert r.status_code == 200
     titles = [e["title"] for e in other.get("/api/items").json()]
-    assert titles == ["Встреча с командой"]                 # данные аккаунта доступны с другого устройства
+    assert titles == ["Встреча с командой"]              
 
 
 def test_register_validation_errors():
@@ -85,7 +85,7 @@ def test_guest_data_moves_to_new_account():
     r = register(c, "move@example.com", headers=guest)
     assert r.json()["moved"] == 1
     assert [e["title"] for e in c.get("/api/items").json()] == ["Позвонить Ивану"]
-    assert c.get("/api/history").json()                      # история разговора тоже переехала
+    assert c.get("/api/history").json()                     
     assert new_client().get("/api/stats", headers=guest).json() == {"total": 0}
 
 
@@ -98,7 +98,7 @@ def test_accounts_are_isolated_and_guest_cannot_impersonate():
     assert b.get("/api/items").json() == []
     acc_id = a.get("/api/auth/me").json()["user_id"]
     r = new_client().get("/api/items", headers={"X-User-Id": acc_id})
-    assert r.status_code == 400                               # «acc-…» нельзя подставить заголовком
+    assert r.status_code == 400                               
 
 
 def test_login_rate_limit():
@@ -116,7 +116,7 @@ def test_pages_are_served():
         assert c.get(path).status_code == 200
 
 
-# ------------------------------------------------------------------ все задачи по датам
+#все задачи по датам
 
 def test_items_filters_by_dates_types_status():
     c = new_client()
@@ -125,7 +125,7 @@ def test_items_filters_by_dates_types_status():
                  "Напомни 25 ноября в 9 позвонить Ивану", "Купить молоко", "без срока"]:
         c.post("/api/message", json={"text": text}, headers=h)
     everything = c.get("/api/items", headers=h).json()
-    assert len(everything) == 4 and everything[-1]["date"] is None      # без срока — в конце
+    assert len(everything) == 4 and everything[-1]["date"] is None      
 
     nov = c.get("/api/items", params={"start": "2026-11-01", "end": "2026-11-30", "undated": False}, headers=h).json()
     assert [e["title"] for e in nov] == ["Встреча с командой", "Позвонить Ивану"]
@@ -148,7 +148,7 @@ def test_items_expands_recurring_in_range():
     h = {"X-User-Id": "u-recur"}
     c.post("/api/message", json={"text": "Каждый понедельник в 10 планёрка с командой"}, headers=h)
     nov = c.get("/api/items", params={"start": "2026-11-01", "end": "2026-11-30"}, headers=h).json()
-    assert len(nov) == 5                                       # 2, 9, 16, 23, 30 ноября
+    assert len(nov) == 5                                      
 
 
 def test_quick_search():
@@ -159,7 +159,7 @@ def test_quick_search():
     assert hits and hits[0]["title"] == "Встреча с дизайнером"
 
 
-# ------------------------------------------------------------------ категории для иконок
+#категории для иконок
 
 @pytest.mark.parametrize("title, etype, expected", [
     ("Созвон с Иваном", "meeting", "call"), ("Позвонить Ивану", "reminder", "call"),
@@ -179,7 +179,7 @@ def test_event_dict_has_category():
     assert r["events"][0]["category"] == "call"
 
 
-# ------------------------------------------------------------------ приоритеты (из макета)
+#приоритеты 
 
 @pytest.mark.parametrize("text, title, priority", [
     ("Срочно подготовить презентацию завтра в 10", "Подготовить презентацию", "high"),
@@ -193,7 +193,7 @@ def test_priority_from_speech(text, title, priority):
     h = {"X-User-Id": "u-prio-" + str(abs(hash(text)) % 10_000)}
     c.post("/api/message", json={"text": text}, headers=h)
     items = c.get("/api/items", headers=h).json()
-    if not items:                                    # «без срока» могли спросить отдельно
+    if not items:                                   
         c.post("/api/message", json={"text": "без срока"}, headers=h)
         items = c.get("/api/items", headers=h).json()
     assert [(e["title"], e["priority"]) for e in items] == [(title, priority)]
